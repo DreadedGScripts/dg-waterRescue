@@ -53,6 +53,11 @@ CreateThread(function()
 
     local url = ('https://raw.githubusercontent.com/%s/%s/fxmanifest.lua'):format(REPO, BRANCH)
     PerformHttpRequest(url, function(statusCode, body)
+        if statusCode == 404 then
+            print(('[%s] Version check unavailable: remote manifest not publicly reachable for %s'):format(resourceName, REPO))
+            return
+        end
+
         if statusCode ~= 200 then
             print(('[%s] Version check failed: HTTP %s'):format(resourceName, tostring(statusCode)))
             return
