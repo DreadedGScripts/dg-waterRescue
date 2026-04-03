@@ -23,6 +23,7 @@ Config.Search = {
 	shoreSearchAngleStep = 10,
 	shoreProbeForward = 10.0,
 	beachApproachDistance = 16.0,
+	boatBeachInlandOffset = 3.0,
 	beachInlandDistance = 10.0,
 	patientDropInlandOffset = 4.0,
 	ambulanceInlandDistance = 28.0,
@@ -35,7 +36,7 @@ Config.Navigation = {
 	boatShoreSpeed = 36.0,
 	boatBeachSpeed = 44.0,
 	boatShoreApproachThreshold = 10.0,
-	boatBeachStopDistance = 11.0,
+	boatBeachStopDistance = 4.0,
 	ambulanceResponseSpeed = 24.0,
 }
 
@@ -83,4 +84,19 @@ Config.Billing = {
 Config.Cooldown = {
 	enabled = true,
 	seconds = 240,
+}
+
+Config.Dispatch = {
+	preferRealEMS = true,
+	qbEmsJobName = 'ambulance',
+	requireOnDuty = true,
+	alertBlip = {
+		enabled = true,
+		sprite = 153,
+		color = 1,
+		scale = 1.0,
+		route = true,
+		durationSeconds = 180,
+		label = 'Water Rescue Call'
+	}
 }

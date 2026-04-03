@@ -9,24 +9,41 @@ local function hasResource(name)
     return GetResourceState(name) == 'started'
 end
 
+local function toQbNotifyType(severity)
+    if severity == 'critical' then
+        return 'error'
+    end
+    if severity == 'success' then
+        return 'success'
+    end
+    return 'primary'
+end
+
 function Framework.notify(message, severity, subText)
     if hasResource('dg-notifications') then
-        TriggerEvent('dg-notifications:client:notify', {
+        TriggerEvent('dg-notifications:client:ems', {
             mainText = message,
             subText = subText or '',
             tag = 'Water Rescue',
             severity = severity or 'medium',
-            timestamp = string.format('%02d:%02d', GetClockHours(), GetClockMinutes())
+            timestamp = string.format('%02d:%02d', GetClockHours(), GetClockMinutes()),
+            theme = 'ems'
         })
         return
     end
 
+    if hasResource('qb-core') then
+        local qbType = toQbNotifyType(severity)
+        local text = message
+        if subText and subText ~= '' then
+            text = ('%s | %s'):format(message, subText)
+        end
+        TriggerEvent('QBCore:Notify', text, qbType, 4500)
+        return
+    end
+
     if hasResource('dg-bridge') then
-        TriggerEvent('dg-bridge:notify', {
-            message = message,
-            type = severity == 'critical' and 'error' or 'info',
-            duration = 4500
-        })
+        TriggerEvent('dg-bridge:notify', message, severity == 'critical' and 'error' or 'info', 4500)
         return
     end
 
