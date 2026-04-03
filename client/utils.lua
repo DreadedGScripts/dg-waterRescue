@@ -115,25 +115,137 @@ function Utils.seatPlayerInBoat(ped, boat)
     return false
 end
 
+function Utils.setVehicleFuelFull(vehicle)
+    if not vehicle or vehicle == 0 or not DoesEntityExist(vehicle) then
+        return
+    end
+
+    SetVehicleFuelLevel(vehicle, 100.0)
+
+    -- Compatibility with common fuel systems that read decor/state values.
+    if DecorIsRegisteredAsType('_FUEL_LEVEL', 1) then
+        DecorSetFloat(vehicle, '_FUEL_LEVEL', 100.0)
+    end
+
+    local okEntity, ent = pcall(function()
+        return Entity(vehicle)
+    end)
+    if okEntity and ent and ent.state then
+        pcall(function()
+            ent.state:set('fuel', 100.0, true)
+            ent.state:set('fuelLevel', 100.0, true)
+            ent.state:set('_FUEL_LEVEL', 100.0, true)
+        end)
+    end
+end
+
 function Utils.driveBoatToPoint(driver, boat, target, speed, timeoutMs, threshold)
     local deadline = GetGameTimer() + timeoutMs
     local reissueAt = 0
+    local driveStyle = 1074528293
+    local navRefreshMs = 1800
+    local stallWindowMs = 5200
+    local minProgressPerTick = 0.18
+    local lastDist = nil
+    local stalledSince = 0
+    local recoveries = 0
+    local detourSign = 1.0
+
+    local function missionTo(x, y, z, missionSpeed)
+        TaskBoatMission(driver, boat, 0, 0, x, y, z, 4, missionSpeed, driveStyle, 0.0, 0.0)
+    end
 
     while GetGameTimer() < deadline do
         if not DoesEntityExist(driver) or IsPedDeadOrDying(driver, true) then
             return false, GetEntityCoords(boat)
         end
 
-        if GetGameTimer() >= reissueAt then
-            TaskBoatMission(driver, boat, 0, 0, target.x, target.y, target.z, 4, speed, 1074528293, 0.0, 0.0)
-            reissueAt = GetGameTimer() + 850
-        end
+        Utils.setVehicleFuelFull(boat)
+
+        SetBoatAnchor(boat, false)
+        SetVehicleUndriveable(boat, false)
+        SetVehicleEngineOn(boat, true, true, true)
 
         local b = GetEntityCoords(boat)
         local dist = Vdist(b.x, b.y, b.z, target.x, target.y, target.z)
         if dist <= threshold then
             return true, b
         end
+
+        if GetGameTimer() >= reissueAt then
+            local dirX, dirY = Utils.normalize2d(target.x - b.x, target.y - b.y)
+            local navX, navY, navZ
+
+            if dist <= 60.0 then
+                navX = target.x
+                navY = target.y
+                navZ = Utils.getWaterOrDefault(target.x, target.y, target.z) + 0.7
+            else
+                local lookAhead = math.min(55.0, math.max(20.0, dist * 0.50))
+                navX = b.x + (dirX * lookAhead)
+                navY = b.y + (dirY * lookAhead)
+                navZ = Utils.getWaterOrDefault(navX, navY, target.z) + 0.7
+            end
+
+            missionTo(navX, navY, navZ, speed)
+            reissueAt = GetGameTimer() + navRefreshMs
+        end
+
+        if lastDist ~= nil then
+            local progress = lastDist - dist
+            if progress < minProgressPerTick then
+                if stalledSince == 0 then
+                    stalledSince = GetGameTimer()
+                end
+            else
+                stalledSince = 0
+                recoveries = 0
+            end
+        end
+
+        if stalledSince > 0 and (GetGameTimer() - stalledSince) >= stallWindowMs then
+            recoveries = recoveries + 1
+            stalledSince = GetGameTimer()
+
+            if recoveries >= 2 then
+                ClearPedTasks(driver)
+            end
+            SetBoatAnchor(boat, false)
+            SetVehicleUndriveable(boat, false)
+            SetVehicleEngineOn(boat, true, true, true)
+            local dirX, dirY = Utils.normalize2d(target.x - b.x, target.y - b.y)
+            local perpX, perpY = -dirY, dirX
+
+            local detourForward = math.min(26.0, math.max(10.0, dist * 0.35))
+            local detourSide = 10.0 * detourSign
+            local detourX = b.x + (dirX * detourForward) + (perpX * detourSide)
+            local detourY = b.y + (dirY * detourForward) + (perpY * detourSide)
+            local detourZ = Utils.getWaterOrDefault(detourX, detourY, target.z) + 0.7
+
+            missionTo(detourX, detourY, detourZ, speed + 2.0)
+            if recoveries >= 2 then
+                SetVehicleForwardSpeed(boat, speed * 0.35)
+            end
+            reissueAt = GetGameTimer() + 1200
+            detourSign = detourSign * -1.0
+
+            if recoveries >= 5 then
+                local dx = target.x - b.x
+                local dy = target.y - b.y
+                local mag = math.sqrt((dx * dx) + (dy * dy))
+                if mag > 0.001 then
+                    local step = math.min(18.0, mag * 0.4)
+                    local nx = b.x + (dx / mag) * step
+                    local ny = b.y + (dy / mag) * step
+                    local waterZ = Utils.getWaterOrDefault(nx, ny, target.z)
+                    SetEntityCoordsNoOffset(boat, nx, ny, waterZ + 0.9, false, false, false)
+                    SetVehicleForwardSpeed(boat, speed * 0.45)
+                    recoveries = 0
+                end
+            end
+        end
+
+        lastDist = dist
 
         Wait(200)
     end

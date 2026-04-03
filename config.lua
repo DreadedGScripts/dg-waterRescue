@@ -8,7 +8,11 @@ Config.Trigger = {
 }
 
 Config.Models = {
-	boat = 'dinghy',
+	boat = 'seashark2',
+	rescueDrivers = {
+		's_f_y_baywatch_01',
+		's_m_y_baywatch_01',
+	},
 	rescueDriver = 's_m_y_baywatch_01',
 	paramedic = 's_m_m_paramedic_01',
 	ambulance = 'ambulance',
@@ -32,6 +36,8 @@ Config.Search = {
 
 Config.Navigation = {
 	boatPickupDistance = 14.0,
+	boatPickupGraceDistance = 28.0,
+	boatPickupPassThroughDistance = 20.0,
 	boatPickupSpeed = 34.0,
 	boatShoreSpeed = 36.0,
 	boatBeachSpeed = 44.0,
@@ -52,6 +58,14 @@ Config.TimeoutsMs = {
 Config.Medical = {
 	cprDurationMs = 6200,
 	partialReviveHealth = 130,
+}
+
+Config.PatientChoice = {
+	enabled = true,
+	timeoutSeconds = 12,
+	defaultChoice = 'dropoff',
+	reviveControl = 38,
+	dropoffControl = 47,
 }
 
 Config.Realism = {

@@ -5,12 +5,12 @@
 ### Realistic AI Maritime Rescue for FiveM
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
-![License](https://img.shields.io/badge/license-Commercial-red.svg)
-![Framework](https://img.shields.io/badge/framework-QBCore%20%7C%20ESX%20%7C%20Standalone-green.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Framework](https://img.shields.io/badge/framework-QBCore%20%7C%20ESX%20%7C%20Standalone-blue.svg)
 
-**AI lifeguard extraction, beach handoff, ambulance response, CPR, and critical-condition revive**
+**AI lifeguard extraction, EMS-first dispatch, beach handoff, CPR, and critical-condition revive**
 
-[Overview](#-overview) • [Features](#-features) • [Installation](#-installation) • [Configuration](#%EF%B8%8F-configuration) • [Beta Program](#-beta-program)
+[Overview](#-overview) • [Features](#-features) • [Installation](#-installation) • [Configuration](#%EF%B8%8F-configuration) • [Events](#-trigger--events) • [Ecosystem](#-dg-ecosystem)
 
 ---
 
@@ -18,20 +18,22 @@
 
 ## 📋 Overview
 
-**DG Water Rescue** is a standalone-first rescue system built for realistic RP outcomes when a player dies in water.
+**DG Water Rescue** is a free, standalone-first rescue system for FiveM that creates a realistic RP experience when a player goes down in water.
 
 Full sequence:
-1. Player dies in water
-2. Lifeguard rescue boat dispatches and extracts the player
-3. Boat lands at a safer shore point
-4. Ambulance team meets at the beach
-5. Paramedic performs CPR
-6. Player is revived in critical condition (partial health)
+1. Player dies in water → rescue is automatically triggered
+2. AI lifeguard boat dispatches and drives to the player
+3. Player is warped into the boat, boat beaches on shore
+4. **EMS-first dispatch** — if real EMS are online (QBCore), they are notified with a blip; otherwise an AI ambulance responds
+5. AI ambulance driver + treatment paramedic arrive at the beach
+6. Paramedic carries the patient to the rear of the ambulance and performs CPR
+7. Player is revived in critical condition (partial health)
 
 | Property | Value |
 |----------|-------|
 | **Resource Name** | `dg-waterRescue` |
 | **Version** | `2.0.0` |
+| **License** | MIT (Free) |
 | **Framework Support** | QBCore, ESX, Standalone |
 | **Primary Mode** | Standalone-first |
 | **Bridge Integration** | Optional via [`dg-bridge`](https://github.com/DreadedGScripts/dg-bridge) |
@@ -40,28 +42,35 @@ Full sequence:
 
 ## ✨ Features
 
-- AI-only rescue responders for consistent behavior
-- Water-death trigger with guarded rescue state flow
-- Safe shore search with hazard avoidance bias
-- Beach transfer + ambulance rendezvous
-- CPR animation sequence and partial revive outcome
-- Optional billing and anti-abuse cooldown controls
-- Notification fallback chain:
-	- `dg-notifications` → `dg-bridge` → chat fallback
+- **AI lifeguard boat** dispatches automatically on water death, always runs regardless of EMS status
+- **EMS-first dispatch system** — checks for online QBCore EMS before spawning AI ambulance
+  - Real EMS online: they receive a dispatch notification + timed rescue blip with route
+  - No EMS online: AI ambulance with driver and treatment paramedic responds automatically
+- **Two-paramedic ambulance crew** — driver navigates while the treatment paramedic handles the patient
+- **Carry sequence** — paramedic walks the patient to the rear of the ambulance before CPR
+- **CPR animation** at the ambulance rear with animation fallback
+- **Partial-health revive** — player wakes up in critical condition for continued medical RP
+- **Safe shore search** with hazard avoidance and beach zone preference
+- **Side-of-boat handoff** — player exits to the side of the beached boat, not on top of it
+- Optional billing and anti-abuse cooldown
+- Notification fallback chain: `dg-notifications` → `QBCore` → `dg-bridge` → chat
 
 ---
 
 ## 📦 Installation
 
+1. Drop `dg-waterRescue` into your resources folder
+2. Add to your `server.cfg`:
+
 ```cfg
 ensure dg-waterRescue
 ```
 
-Recommended order:
+Recommended load order with optional integrations:
 
 ```cfg
-ensure dg-bridge         # optional but recommended for compatibility/billing
-ensure dg-notifications  # optional UI notifications
+ensure dg-bridge         # optional — framework abstraction & billing
+ensure dg-notifications  # optional — enhanced UI notifications
 ensure dg-waterRescue
 ```
 
@@ -69,64 +78,57 @@ ensure dg-waterRescue
 
 ## ⚙️ Configuration
 
-Edit `config.lua` to tune realism and behavior.
+All behavior is tunable in `config.lua`. No code changes required.
 
 | Section | Purpose |
 |---------|---------|
-| `Config.Trigger` | Dead-in-water and manual trigger controls |
+| `Config.Trigger` | Dead-in-water detection and manual trigger controls |
 | `Config.Models` | Boat, lifeguard, paramedic, and ambulance models |
-| `Config.Search` | Shore search and spawn planning |
-| `Config.Navigation` | Boat/ambulance speeds and thresholds |
-| `Config.TimeoutsMs` | Timeout safety for each rescue stage |
-| `Config.Medical` | CPR timing and partial revive health |
-| `Config.Realism` | Beach preference and hazard filtering |
-| `Config.Billing` | Optional rescue charges |
+| `Config.Search` | Shore search radius, spawn offsets, and beach targeting |
+| `Config.Navigation` | Boat/ambulance speeds and arrival thresholds |
+| `Config.TimeoutsMs` | Per-stage timeout safety values |
+| `Config.Medical` | CPR duration and partial revive health value |
+| `Config.Realism` | Beach zone preference and hazard object filtering |
+| `Config.Billing` | Optional rescue charge (requires `dg-bridge`) |
 | `Config.Cooldown` | Anti-spam rescue cooldown |
+| `Config.Dispatch` | EMS-first dispatch, QBCore job name, blip settings |
 
 ---
 
 ## 🧠 Trigger & Events
 
-- Automatic trigger: `baseevents:onPlayerDied` (water deaths)
-- Manual trigger (optional):
+**Automatic trigger** — fires on `baseevents:onPlayerDied` when the player dies in water.
 
+**Manual trigger:**
 ```lua
-TriggerEvent('dg-waterRescue:beginRescue', coords)
+TriggerEvent('dg-waterRescue:beginRescue', vector3(x, y, z))
+```
+
+**EMS dispatch events (server → client):**
+```lua
+-- Sent to victim: AI ambulance or real EMS path
+TriggerClientEvent('dg-waterRescue:client:dispatchDecision', src, { useAI = true, useAiAmbulance = false })
+
+-- Sent to online EMS players: dispatch notification
+TriggerClientEvent('dg-waterRescue:client:emsRescueAlert', emsId, coords)
 ```
 
 ---
 
 ## 🌐 DG Ecosystem
 
-DG Water Rescue is designed to work cleanly with your other DG resources:
+DG Water Rescue is part of the free DG Scripts ecosystem:
 
-- [`dg-bridge`](https://github.com/DreadedGScripts/dg-bridge) - framework abstraction (QBCore/ESX/standalone)
-- [`dg-notifications`](https://github.com/DreadedGScripts/dg-notifications) - enhanced rescue event notifications
-- [`dg-adminmenu`](https://github.com/DreadedGScripts/dg-adminmenu-docs) - admin operations, reporting, and ecosystem management
-- [`dg-discord`](https://github.com/DreadedGScripts/dg-discord) - Discord logging/automation support
-
----
-
-## 🧪 Beta Program
-
-### DG AdminPanel Beta Tester Call
-
-I am actively looking for **beta tester servers** for `dg-adminmenu`.
-
-**What I need:**
-- A server with a real active player population (not empty/dev-only)
-- Willingness to run and test features in real sessions
-- Bug/feedback reporting during beta
-
-**Tester reward:**
-- Servers accepted into beta testing will receive the finalized `dg-adminmenu` script **for free** once release is complete.
-
-If your server is interested, contact me with your server details and expected active player window.
+- [`dg-bridge`](https://github.com/DreadedGScripts/dg-bridge) — framework abstraction (QBCore / ESX / standalone billing, notifications, revive)
+- [`dg-notifications`](https://github.com/DreadedGScripts/dg-notifications) — enhanced EMS-styled rescue notifications
+- [`dg-adminmenu`](https://github.com/DreadedGScripts/dgscripts-admin-menu) — admin panel with reporting and server management tools
+- [`dg-discord`](https://github.com/DreadedGScripts/dg-discord) — Discord bot integration for logging and automation
 
 ---
 
 ## 🛠️ Notes
 
-- Built for balanced realism with practical fallback behavior.
-- Billing/cooldown are configurable and can be disabled.
-- Partial-health revive is intentional for medical RP continuity.
+- Standalone-first: works without any framework. QBCore/ESX features activate automatically if present.
+- Billing and cooldown are off by default and fully optional.
+- Partial-health revive is intentional — patients should seek further medical RP after rescue.
+- The AI boat **always** dispatches regardless of EMS availability. Only the ambulance stage is gated.

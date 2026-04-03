@@ -10,6 +10,110 @@ local Framework = DGWaterRescue.Framework
 local state = 'IDLE'
 local rescueActive = false
 local lastRescueStartAt = 0
+local SHOULDER_CARRY_DICT = 'missfinale_c2mcs_1'
+local SHOULDER_CARRY_MEDIC_ANIM = 'fin_c2_mcs_1_camman'
+local SHOULDER_CARRY_PATIENT_ANIM = 'firemans_carry'
+local SHOULDER_CARRY_PATIENT_FALLBACK_ANIM = 'fin_c2_mcs_1_camman_p'
+
+local function playPatientCarryAnimation(ped)
+    TaskPlayAnim(ped, SHOULDER_CARRY_DICT, SHOULDER_CARRY_PATIENT_ANIM, 8.0, -8.0, -1, 33, 0.0, false, false, false)
+    Wait(50)
+
+    if not IsEntityPlayingAnim(ped, SHOULDER_CARRY_DICT, SHOULDER_CARRY_PATIENT_ANIM, 3) then
+        TaskPlayAnim(ped, SHOULDER_CARRY_DICT, SHOULDER_CARRY_PATIENT_FALLBACK_ANIM, 8.0, -8.0, -1, 33, 0.0, false, false, false)
+    end
+end
+
+local function pickRescueDriverModelName()
+    local candidates = Utils.cfg('Models.rescueDrivers', nil)
+    if type(candidates) ~= 'table' or #candidates == 0 then
+        return Utils.cfg('Models.rescueDriver', 's_m_y_baywatch_01')
+    end
+
+    local pool = {}
+    for _, name in ipairs(candidates) do
+        if type(name) == 'string' and name ~= '' then
+            pool[#pool + 1] = name
+        end
+    end
+
+    if #pool == 0 then
+        return Utils.cfg('Models.rescueDriver', 's_m_y_baywatch_01')
+    end
+
+    return pool[math.random(1, #pool)]
+end
+
+local function driveBoatForPickup(driver, boat, deathPos)
+    local timeoutMs = Utils.cfg('TimeoutsMs.boatPickup', 45000)
+    local forcePickupDistance = Utils.cfg('Navigation.boatPickupGraceDistance', 28.0)
+    local deepWaterPickupDistance = forcePickupDistance + 18.0
+    local deadline = GetGameTimer() + timeoutMs
+    local reissueAt = 0
+
+    while GetGameTimer() < deadline do
+        if not DoesEntityExist(driver) or IsPedDeadOrDying(driver, true) or not DoesEntityExist(boat) then
+            return false, GetEntityCoords(boat)
+        end
+
+        Utils.setVehicleFuelFull(boat)
+        SetBoatAnchor(boat, false)
+        SetVehicleUndriveable(boat, false)
+        SetVehicleEngineOn(boat, true, true, true)
+
+        local boatPos = GetEntityCoords(boat)
+        local dx = boatPos.x - deathPos.x
+        local dy = boatPos.y - deathPos.y
+        local horizontalDist = math.sqrt((dx * dx) + (dy * dy))
+
+        local victimWaterZ = Utils.getWaterOrDefault(deathPos.x, deathPos.y, deathPos.z)
+        local victimDepth = victimWaterZ - deathPos.z
+        local isDeepUnderwater = victimDepth >= 6.0
+
+        if horizontalDist <= forcePickupDistance then
+            return true, boatPos
+        end
+
+        if isDeepUnderwater and horizontalDist <= deepWaterPickupDistance then
+            Utils.debug(('Deep-water pickup fallback engaged at %.2fm horizontal distance'):format(horizontalDist))
+            return true, boatPos
+        end
+
+        if GetGameTimer() >= reissueAt then
+            TaskBoatMission(
+                driver,
+                boat,
+                0,
+                0,
+                deathPos.x,
+                deathPos.y,
+                Utils.getWaterOrDefault(deathPos.x, deathPos.y, deathPos.z) + 0.7,
+                4,
+                Utils.cfg('Navigation.boatPickupSpeed', 34.0),
+                1074528293,
+                0.0,
+                0.0
+            )
+            reissueAt = GetGameTimer() + 2200
+        end
+
+        if GetEntitySpeed(boat) < 1.1 and horizontalDist <= (forcePickupDistance + 12.0) then
+            return true, boatPos
+        end
+
+        Wait(200)
+    end
+
+    local finalPos = GetEntityCoords(boat)
+    local fdx = finalPos.x - deathPos.x
+    local fdy = finalPos.y - deathPos.y
+    local finalHorizontalDist = math.sqrt((fdx * fdx) + (fdy * fdy))
+    if finalHorizontalDist <= (deepWaterPickupDistance + 8.0) then
+        return true, finalPos
+    end
+
+    return false, finalPos
+end
 
 local function forcePlayerExitBoat(ped, boat, timeoutMs)
     if not DoesEntityExist(boat) then
@@ -50,6 +154,11 @@ local function formatRuntimeError(err)
 end
 
 local function placePlayerAtHandoffPoint(ped, boat, handoffPoint)
+    if DoesEntityExist(boat) and IsEntityAttachedToEntity(ped, boat) then
+        DetachEntity(ped, true, true)
+        SetEntityCollision(ped, true, true)
+    end
+
     forcePlayerExitBoat(ped, boat, 3500)
 
     if IsPedInAnyVehicle(ped, false) then
@@ -65,6 +174,315 @@ local function placePlayerAtHandoffPoint(ped, boat, handoffPoint)
     local target = Utils.parseCoords(handoffPoint, GetEntityCoords(ped))
     local groundZ = Utils.getGroundOrDefault(target.x, target.y, target.z)
     SetEntityCoords(ped, target.x, target.y, groundZ + 0.15, false, false, false, true)
+end
+
+local function boardPlayerForWaterTransit(ped, boat)
+    if not DoesEntityExist(boat) then
+        return nil
+    end
+
+    ClearPedTasksImmediately(ped)
+
+    if Utils.seatPlayerInBoat(ped, boat) and IsPedInVehicle(ped, boat, false) then
+        return 'seat'
+    end
+
+    -- Fallback for one-seat craft: attach patient to craft so transit can continue.
+    SetEntityCollision(ped, false, false)
+    AttachEntityToEntity(ped, boat, 0, 0.0, -0.6, 0.55, 0.0, 0.0, 180.0, false, false, false, false, 2, true)
+    Wait(100)
+
+    if IsEntityAttachedToEntity(ped, boat) then
+        return 'attached'
+    end
+
+    SetEntityCollision(ped, true, true)
+    return nil
+end
+
+local function getAmbulanceLoadPosition(ambulance)
+    local loadBase = GetOffsetFromEntityInWorldCoords(ambulance, 1.2, -2.6, 0.0)
+    local loadGround = Utils.getGroundOrDefault(loadBase.x, loadBase.y, loadBase.z)
+    return vector3(loadBase.x, loadBase.y, loadGround + 0.1)
+end
+
+local function setAmbulanceRearDoorsOpen(ambulance, isOpen)
+    if not DoesEntityExist(ambulance) then
+        return
+    end
+
+    for _, doorIndex in ipairs({ 2, 3 }) do
+        if isOpen then
+            SetVehicleDoorOpen(ambulance, doorIndex, false, false)
+        else
+            SetVehicleDoorShut(ambulance, doorIndex, false)
+        end
+    end
+end
+
+local function getAmbulancePatientSeat(ambulance)
+    for _, seat in ipairs({ 1, 2, 0 }) do
+        if IsVehicleSeatFree(ambulance, seat) then
+            return seat
+        end
+    end
+
+    return nil
+end
+
+local function getAmbulanceRearSeat(ambulance)
+    for _, seat in ipairs({ 1, 2 }) do
+        if IsVehicleSeatFree(ambulance, seat) then
+            return seat
+        end
+    end
+
+    return nil
+end
+
+local function placeMedicInRearSeat(medic, ambulance)
+    local rearSeat = getAmbulanceRearSeat(ambulance)
+    if rearSeat == nil then
+        return false
+    end
+
+    TaskWarpPedIntoVehicle(medic, ambulance, rearSeat)
+    Wait(100)
+    return IsPedInVehicle(medic, ambulance, false)
+end
+
+local function boardMedicInAmbulance(medic, ambulance, reservedSeat)
+    for _, seat in ipairs({ 2, 1, 0 }) do
+        if seat ~= reservedSeat and IsVehicleSeatFree(ambulance, seat) then
+            TaskWarpPedIntoVehicle(medic, ambulance, seat)
+            if IsPedInVehicle(medic, ambulance, false) then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+local function prepPatientForCarry(ped)
+    if IsEntityAttached(ped) then
+        DetachEntity(ped, true, true)
+    end
+
+    local pedPos = GetEntityCoords(ped)
+    if IsPedDeadOrDying(ped, true) then
+        NetworkResurrectLocalPlayer(pedPos.x, pedPos.y, pedPos.z, GetEntityHeading(ped), true, false)
+        Wait(100)
+    end
+
+    ClearPedSecondaryTask(ped)
+    ClearPedTasksImmediately(ped)
+    FreezeEntityPosition(ped, false)
+    SetEntityInvincible(ped, true)
+    SetPedCanRagdoll(ped, false)
+    SetEntityHealth(ped, math.max(101, math.min(GetEntityMaxHealth(ped), 110)))
+end
+
+local function startShoulderCarry(medic, ped, resetTasks)
+    local hasCarryAnim = Utils.loadAnimDict(SHOULDER_CARRY_DICT)
+
+    if resetTasks ~= false then
+        ClearPedTasksImmediately(medic)
+        ClearPedTasksImmediately(ped)
+    end
+
+    if hasCarryAnim then
+        TaskPlayAnim(medic, SHOULDER_CARRY_DICT, SHOULDER_CARRY_MEDIC_ANIM, 8.0, -8.0, -1, 49, 0.0, false, false, false)
+        playPatientCarryAnimation(ped)
+    end
+
+    SetEntityCollision(ped, false, false)
+    AttachEntityToEntity(ped, medic, GetPedBoneIndex(medic, 24818), 0.18, 0.16, 0.52, 75.0, 82.0, 182.0, false, false, false, false, 2, true)
+end
+
+local function ensureShoulderCarryAnimation(medic, ped)
+    if not Utils.loadAnimDict(SHOULDER_CARRY_DICT) then
+        return
+    end
+
+    if not IsEntityPlayingAnim(medic, SHOULDER_CARRY_DICT, SHOULDER_CARRY_MEDIC_ANIM, 3) then
+        TaskPlayAnim(medic, SHOULDER_CARRY_DICT, SHOULDER_CARRY_MEDIC_ANIM, 8.0, -8.0, -1, 49, 0.0, false, false, false)
+    end
+
+    if not IsEntityPlayingAnim(ped, SHOULDER_CARRY_DICT, SHOULDER_CARRY_PATIENT_ANIM, 3)
+        and not IsEntityPlayingAnim(ped, SHOULDER_CARRY_DICT, SHOULDER_CARRY_PATIENT_FALLBACK_ANIM, 3) then
+        playPatientCarryAnimation(ped)
+    end
+end
+
+local function stopShoulderCarry(medic, ped)
+    if IsEntityAttachedToEntity(ped, medic) then
+        DetachEntity(ped, true, true)
+    end
+
+    SetEntityCollision(ped, true, true)
+    SetPedCanRagdoll(ped, true)
+    SetEntityInvincible(ped, false)
+    ClearPedSecondaryTask(ped)
+    ClearPedTasksImmediately(medic)
+    ClearPedTasksImmediately(ped)
+end
+
+local function carryPatientIntoAmbulance(medic, ped, ambulance)
+    local loadPos = getAmbulanceLoadPosition(ambulance)
+    local patientSeat = getAmbulancePatientSeat(ambulance)
+    if patientSeat == nil then
+        return false, nil
+    end
+
+    prepPatientForCarry(ped)
+    startShoulderCarry(medic, ped)
+    SetPedKeepTask(medic, true)
+    SetPedMoveRateOverride(medic, 10.0)
+    SetPedMaxMoveBlendRatio(medic, 3.0)
+    TaskGoToCoordAnyMeans(medic, loadPos.x, loadPos.y, loadPos.z, 6.0, 0, false, 786603, 0.0)
+
+    local deadline = GetGameTimer() + 9000
+    while GetGameTimer() < deadline do
+        local medicPos = GetEntityCoords(medic)
+        if Vdist(medicPos.x, medicPos.y, medicPos.z, loadPos.x, loadPos.y, loadPos.z) <= 1.6 then
+            break
+        end
+
+        if not IsEntityAttachedToEntity(ped, medic) then
+            startShoulderCarry(medic, ped, false)
+        end
+
+        ensureShoulderCarryAnimation(medic, ped)
+
+        Wait(150)
+    end
+
+    stopShoulderCarry(medic, ped)
+
+    TaskWarpPedIntoVehicle(ped, ambulance, patientSeat)
+    Wait(150)
+
+    if not IsPedInVehicle(ped, ambulance, false) then
+        return false, nil
+    end
+
+    return true, patientSeat
+end
+
+local function revivePatientInsideAmbulance(ped, ambulance, patientSeat)
+    if not DoesEntityExist(ambulance) then
+        return false
+    end
+
+    TriggerServerEvent('dg-waterRescue:server:preparePatientRevive')
+    Wait(250)
+
+    if not IsPedInVehicle(ped, ambulance, false) then
+        TaskWarpPedIntoVehicle(ped, ambulance, patientSeat or 1)
+        Wait(150)
+    end
+
+    if IsPedDeadOrDying(ped, true) then
+        local p = GetEntityCoords(ped)
+        NetworkResurrectLocalPlayer(p.x, p.y, p.z, GetEntityHeading(ambulance), true, false)
+        Wait(100)
+    end
+
+    local maxHealth = GetEntityMaxHealth(ped)
+    local target = math.min(maxHealth, Utils.cfg('Medical.partialReviveHealth', 130))
+    SetEntityHealth(ped, target)
+    ClearPedBloodDamage(ped)
+    ClearPedSecondaryTask(ped)
+    ClearPedTasksImmediately(ped)
+
+    if not IsPedInVehicle(ped, ambulance, false) then
+        TaskWarpPedIntoVehicle(ped, ambulance, patientSeat or 1)
+        Wait(150)
+    end
+
+    return IsPedInVehicle(ped, ambulance, false)
+end
+
+local function releasePatientFromAmbulance(ped, ambulance)
+    if not DoesEntityExist(ambulance) then
+        return false
+    end
+
+    local dropPos = GetOffsetFromEntityInWorldCoords(ambulance, 1.4, -4.2, 0.0)
+    local dropZ = Utils.getGroundOrDefault(dropPos.x, dropPos.y, dropPos.z)
+
+    if IsPedInAnyVehicle(ped, false) then
+        TaskWarpPedOutOfVehicle(ped, ambulance)
+        Wait(100)
+    end
+
+    ClearPedTasksImmediately(ped)
+    SetEntityCoords(ped, dropPos.x, dropPos.y, dropZ + 0.1, false, false, false, true)
+    SetEntityHeading(ped, GetEntityHeading(ambulance))
+    SetEntityInvincible(ped, false)
+    SetPedCanRagdoll(ped, true)
+    return true
+end
+
+local function choosePatientOutcomeInAmbulance()
+    if not Utils.cfg('PatientChoice.enabled', true) then
+        return 'revive'
+    end
+
+    local timeoutSeconds = Utils.cfg('PatientChoice.timeoutSeconds', 12)
+    local defaultChoice = Utils.cfg('PatientChoice.defaultChoice', 'dropoff')
+    local reviveControl = Utils.cfg('PatientChoice.reviveControl', 38)
+    local dropoffControl = Utils.cfg('PatientChoice.dropoffControl', 47)
+    local deadline = GetGameTimer() + (timeoutSeconds * 1000)
+
+    while GetGameTimer() < deadline do
+        local secondsLeft = math.max(1, math.ceil((deadline - GetGameTimer()) / 1000))
+        local message = ('Press ~INPUT_CONTEXT~ to revive in ambulance ($%s) or ~INPUT_DETONATE~ to be dropped off without revive. Auto: %s in %ss'):format(
+            tostring(Utils.cfg('Billing.amount', 850)),
+            tostring(defaultChoice),
+            secondsLeft
+        )
+
+        BeginTextCommandDisplayHelp('STRING')
+        AddTextComponentSubstringPlayerName(message)
+        EndTextCommandDisplayHelp(0, false, false, 1)
+
+        if IsControlJustPressed(0, reviveControl) then
+            return 'revive'
+        end
+
+        if IsControlJustPressed(0, dropoffControl) then
+            return 'dropoff'
+        end
+
+        Wait(0)
+    end
+
+    return defaultChoice
+end
+
+local function sendRescueUnitsAway(boat, driver, seaExitPoint, ambulance, ambulanceDriver, medic, ambulanceExitPoint)
+    if DoesEntityExist(boat) and DoesEntityExist(driver) and seaExitPoint then
+        SetBoatAnchor(boat, false)
+        SetVehicleUndriveable(boat, false)
+        SetVehicleEngineOn(boat, true, true, true)
+        Utils.setVehicleFuelFull(boat)
+        TaskBoatMission(driver, boat, 0, 0, seaExitPoint.x, seaExitPoint.y, seaExitPoint.z, 4, 26.0, 1074528293, 0.0, 0.0)
+    end
+
+    if DoesEntityExist(ambulance) and DoesEntityExist(ambulanceDriver) and ambulanceExitPoint then
+        FreezeEntityPosition(ambulance, false)
+        SetVehicleUndriveable(ambulance, false)
+        SetVehicleEngineOn(ambulance, true, true, true)
+        setAmbulanceRearDoorsOpen(ambulance, false)
+
+        if DoesEntityExist(medic) and not IsPedInVehicle(medic, ambulance, false) then
+            boardMedicInAmbulance(medic, ambulance, nil)
+        end
+
+        TaskVehicleDriveToCoord(ambulanceDriver, ambulance, ambulanceExitPoint.x, ambulanceExitPoint.y, ambulanceExitPoint.z, 22.0, 0, GetEntityModel(ambulance), 524863, 1.0, true)
+    end
 end
 
 local function seatRearMedicInAmbulance(medic, ambulance)
@@ -200,6 +618,7 @@ local function spawnRescueBoatNear(targetPos, heading)
                 SetEntityAsMissionEntity(boat, true, true)
                 SetBoatAnchor(boat, false)
                 SetVehicleEngineOn(boat, true, true, true)
+                Utils.setVehicleFuelFull(boat)
                 return boat
             end
         end
@@ -283,7 +702,8 @@ local function runSequence(rawCoords, rescueOptions)
             Utils.getGroundOrDefault(ambulanceSpawn.x, ambulanceSpawn.y, ambulanceSpawn.z)
         )
 
-        local driverModel = Utils.loadModel(Utils.cfg('Models.rescueDriver', 's_m_y_baywatch_01'))
+        local driverModelName = pickRescueDriverModelName()
+        local driverModel = Utils.loadModel(driverModelName)
         local ambulanceModel = nil
         local medicModel = nil
 
@@ -306,14 +726,23 @@ local function runSequence(rawCoords, rescueOptions)
         if useAiAmbulance then
             ambulance = track(CreateVehicle(ambulanceModel, ambulanceSpawn.x, ambulanceSpawn.y, ambulanceSpawn.z, headingToSea, true, false))
             ambulanceDriver = track(CreatePedInsideVehicle(ambulance, 26, medicModel, -1, true, false))
-            medic = track(CreatePed(26, medicModel, ambulanceSpawn.x, ambulanceSpawn.y, ambulanceSpawn.z + 0.2, headingToSea, true, false))
+            local rearSeat = getAmbulanceRearSeat(ambulance)
+            if rearSeat ~= nil then
+                medic = track(CreatePedInsideVehicle(ambulance, 26, medicModel, rearSeat, true, false))
+            end
+
+            if not medic or not DoesEntityExist(medic) then
+                medic = track(CreatePed(26, medicModel, ambulanceSpawn.x, ambulanceSpawn.y, ambulanceSpawn.z + 0.2, headingToSea, true, false))
+            end
 
             if not DoesEntityExist(ambulance) or not DoesEntityExist(ambulanceDriver) or not DoesEntityExist(medic) then
                 Framework.notify('Rescue unavailable (ambulance team failed to spawn).', 'critical')
                 return
             end
 
-            seatRearMedicInAmbulance(medic, ambulance)
+            if not IsPedInVehicle(medic, ambulance, false) then
+                placeMedicInRearSeat(medic, ambulance)
+            end
 
             SetEntityAsMissionEntity(ambulance, true, true)
             SetVehicleSiren(ambulance, true)
@@ -348,14 +777,17 @@ local function runSequence(rawCoords, rescueOptions)
 
         setState('PICKUP')
 
-        local pickedUp, boatPos = Utils.driveBoatToPoint(
-            driver,
-            boat,
-            vector3(deathPos.x, deathPos.y, Utils.getWaterOrDefault(deathPos.x, deathPos.y, deathPos.z) + 0.6),
-            Utils.cfg('Navigation.boatPickupSpeed', 34.0),
-            Utils.cfg('TimeoutsMs.boatPickup', 45000),
-            Utils.cfg('Navigation.boatPickupDistance', 14.0)
-        )
+        local pickedUp, boatPos = driveBoatForPickup(driver, boat, deathPos)
+
+        if not pickedUp then
+            local nearPos = boatPos or GetEntityCoords(boat)
+            local nearDist = Vdist(nearPos.x, nearPos.y, nearPos.z, deathPos.x, deathPos.y, deathPos.z)
+            local graceDistance = Utils.cfg('Navigation.boatPickupGraceDistance', 28.0)
+            if nearDist <= graceDistance then
+                Utils.debug(('Pickup grace fallback engaged at %.2fm'):format(nearDist))
+                pickedUp = true
+            end
+        end
 
         if not pickedUp then
             Framework.notify('Rescue boat could not reach you in time.', 'critical')
@@ -368,8 +800,14 @@ local function runSequence(rawCoords, rescueOptions)
             Wait(350)
         end
 
-        TaskWarpPedIntoVehicle(ped, boat, 0)
-        Wait(500)
+        local boardingMode = boardPlayerForWaterTransit(ped, boat)
+        if not boardingMode then
+            Framework.notify('Pickup failed: unable to secure patient on rescue craft.', 'critical')
+            setState('FAILED')
+            return
+        end
+
+        Wait(120)
 
         Framework.notify('Boat pickup complete. Heading to shore.', 'medium')
         setState('SHORE_TRANSIT')
@@ -442,51 +880,73 @@ local function runSequence(rawCoords, rescueOptions)
             Wait(250)
         end
 
-        TaskLeaveVehicle(medic, ambulance, 0)
-        Wait(900)
+        FreezeEntityPosition(ambulance, true)
+        SetVehicleEngineOn(ambulance, false, true, true)
 
-        local rearPatientPos, rearMedicPos = getAmbulanceRearPositions(ambulance)
-        SetEntityCoords(medic, rearMedicPos.x, rearMedicPos.y, rearMedicPos.z, false, false, false, true)
-        SetEntityHeading(medic, GetEntityHeading(ambulance))
+        TaskLeaveVehicle(medic, ambulance, 0)
+        Wait(1200)
+        setAmbulanceRearDoorsOpen(ambulance, true)
 
         local patientPos = GetEntityCoords(ped)
-        if IsPedInAnyVehicle(ped, false) then
-            local boatPos = GetEntityCoords(boat)
-            patientPos = vector3(boatPos.x, boatPos.y, boatPos.z)
-        end
-        TaskGoStraightToCoord(medic, patientPos.x, patientPos.y, patientPos.z, 2.0, -1, 0.0, 0.0)
+        SetPedKeepTask(medic, true)
+        SetPedMoveRateOverride(medic, 10.0)
+        SetPedMaxMoveBlendRatio(medic, 3.0)
+        TaskGoToCoordAnyMeans(medic, patientPos.x, patientPos.y, patientPos.z, 6.0, 0, false, 786603, 0.0)
 
         local walkDeadline = GetGameTimer() + Utils.cfg('TimeoutsMs.walkToPatient', 12000)
         while GetGameTimer() < walkDeadline do
             local mPos = GetEntityCoords(medic)
-            if Vdist(mPos.x, mPos.y, mPos.z, patientPos.x, patientPos.y, patientPos.z) <= 2.5 then
+            if Vdist(mPos.x, mPos.y, mPos.z, patientPos.x, patientPos.y, patientPos.z) <= 2.2 then
                 break
             end
             Wait(250)
         end
 
-        carryPatientToAmbulanceRear(medic, ped, ambulance)
-        SetEntityCoords(ped, rearPatientPos.x, rearPatientPos.y, rearPatientPos.z, false, false, false, true)
-        SetEntityCoords(medic, rearMedicPos.x, rearMedicPos.y, rearMedicPos.z, false, false, false, true)
+        local loaded, patientSeat = carryPatientIntoAmbulance(medic, ped, ambulance)
+        if not loaded then
+            Framework.notify('Medical handoff failed: unable to load patient into ambulance.', 'critical')
+            setState('FAILED')
+            return
+        end
 
-        setState('CPR')
+        boardMedicInAmbulance(medic, ambulance, patientSeat)
+        Wait(350)
 
-        playCprSequence(medic, ped, Utils.cfg('Medical.cprDurationMs', 6200))
+        local patientChoice = choosePatientOutcomeInAmbulance()
 
-        Framework.reviveWithFallback(ped)
+        if patientChoice == 'revive' then
+            setState('CPR')
 
-        setState('REVIVED')
-        Framework.notify('CPR complete. You were revived with critical condition.', 'success', 'Seek treatment immediately')
+            if not revivePatientInsideAmbulance(ped, ambulance, patientSeat) then
+                Framework.notify('Medical handoff failed: unable to revive patient in ambulance.', 'critical')
+                setState('FAILED')
+                return
+            end
 
-        local departPos = vector3(
-            ambulanceSpawn.x + math.random(55, 85),
-            ambulanceSpawn.y + math.random(55, 85),
+            Wait(1000)
+            releasePatientFromAmbulance(ped, ambulance)
+
+            setState('REVIVED')
+            Framework.notify('You were revived in the ambulance and released at the scene.', 'success', 'Seek treatment immediately')
+        else
+            releasePatientFromAmbulance(ped, ambulance)
+            SetEntityHealth(ped, math.max(101, math.min(GetEntityMaxHealth(ped), 110)))
+            Framework.notify('You were dropped off without ambulance revival. No rescue bill was charged.', 'medium', 'Seek medical help when ready')
+        end
+
+        local seaExitPoint = vector3(
+            waterline.x + (dirSeaX * 140.0),
+            waterline.y + (dirSeaY * 140.0),
+            Utils.getWaterOrDefault(waterline.x + (dirSeaX * 140.0), waterline.y + (dirSeaY * 140.0), waterline.z) + 0.8
+        )
+
+        local ambulanceExitPoint = vector3(
+            ambulanceSpawn.x + math.random(60, 95),
+            ambulanceSpawn.y + math.random(60, 95),
             ambulanceSpawn.z
         )
 
-        TaskEnterVehicle(medic, ambulance, 3000, 0, 1.5, 1, 0)
-        Wait(2200)
-        TaskVehicleDriveToCoord(ambulanceDriver, ambulance, departPos.x, departPos.y, departPos.z, 22.0, 0, GetEntityModel(ambulance), 524863, 1.0, true)
+        sendRescueUnitsAway(boat, driver, seaExitPoint, ambulance, ambulanceDriver, medic, ambulanceExitPoint)
 
         Wait(Utils.cfg('TimeoutsMs.postReviveCleanup', 10000))
 

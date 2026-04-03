@@ -8,6 +8,61 @@ local lastAutoRescueAt = 0
 local dispatchPending = false
 local dispatchRequestedAt = 0
 local dispatchRequestedCoords = nil
+local qbCoreObject = nil
+local qbCoreLookupAttempted = false
+
+local function getQbCoreObject()
+    if qbCoreObject then
+        return qbCoreObject
+    end
+
+    if GetResourceState('qb-core') ~= 'started' then
+        return nil
+    end
+
+    if qbCoreLookupAttempted then
+        return nil
+    end
+
+    qbCoreLookupAttempted = true
+    local ok, core = pcall(function()
+        return exports['qb-core']:GetCoreObject()
+    end)
+
+    if ok and core then
+        qbCoreObject = core
+        return qbCoreObject
+    end
+
+    return nil
+end
+
+local function isPlayerDownedOrDead(ped)
+    if IsPedDeadOrDying(ped, true) then
+        return true
+    end
+
+    local stateBag = LocalPlayer and LocalPlayer.state
+    if stateBag and (stateBag.isdead or stateBag.isDead or stateBag.dead or stateBag.inlaststand or stateBag.laststand) then
+        return true
+    end
+
+    local qbCore = getQbCoreObject()
+    if not qbCore or not qbCore.Functions or not qbCore.Functions.GetPlayerData then
+        return false
+    end
+
+    local ok, playerData = pcall(function()
+        return qbCore.Functions.GetPlayerData()
+    end)
+
+    local metadata = ok and playerData and playerData.metadata
+    if metadata and (metadata.isdead or metadata.inlaststand) then
+        return true
+    end
+
+    return false
+end
 
 local function createEmsRescueBlip(coords)
     local alertCfg = Utils.cfg('Dispatch.alertBlip', {})
@@ -57,7 +112,7 @@ local function tryAutoRescue(reason, coords)
     end
 
     local ped = PlayerPedId()
-    if not IsPedDeadOrDying(ped, true) then
+    if not isPlayerDownedOrDead(ped) then
         return
     end
 
@@ -167,7 +222,7 @@ CreateThread(function()
             dispatchRequestedAt = 0
 
             local ped = PlayerPedId()
-            if IsPedDeadOrDying(ped, true) then
+            if isPlayerDownedOrDead(ped) then
                 local at = Utils.parseCoords(dispatchRequestedCoords, GetEntityCoords(ped))
                 Rescue.begin(at, {
                     useAiAmbulance = true

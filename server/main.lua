@@ -101,6 +101,31 @@ local function tryChargePlayer(src)
     return true, ('Water rescue bill could not be charged (%s $%d).'):format(moneyType, amount)
 end
 
+RegisterNetEvent('dg-waterRescue:server:preparePatientRevive', function()
+    local src = source
+
+    if isResourceStarted('dg-bridge') then
+        pcall(function()
+            exports['dg-bridge']:revivePlayer(src)
+        end)
+        return
+    end
+
+    if isResourceStarted('qb-core') then
+        local okCore, qbCore = pcall(function()
+            return exports['qb-core']:GetCoreObject()
+        end)
+
+        if okCore and qbCore and qbCore.Functions and qbCore.Functions.GetPlayer then
+            local player = qbCore.Functions.GetPlayer(src)
+            if player and player.Functions then
+                player.Functions.SetMetaData('isdead', false)
+                player.Functions.SetMetaData('inlaststand', false)
+            end
+        end
+    end
+end)
+
 RegisterNetEvent('dg-waterRescue:server:rescueState', function(stateName)
     local src = source
 
