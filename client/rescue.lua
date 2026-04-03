@@ -40,30 +40,6 @@ local function forcePlayerExitBoat(ped, boat, timeoutMs)
     return not IsPedInVehicle(ped, boat, false)
 end
 
-local function seatPedInBoat(ped, boat, preferredSeats)
-    if type(preferredSeats) == 'table' then
-        for _, seat in ipairs(preferredSeats) do
-            if IsVehicleSeatFree(boat, seat) then
-                TaskWarpPedIntoVehicle(ped, boat, seat)
-                if IsPedInVehicle(ped, boat, false) then
-                    return true
-                end
-            end
-        end
-    end
-
-    for seat = 0, GetVehicleMaxNumberOfPassengers(boat) - 1 do
-        if IsVehicleSeatFree(boat, seat) then
-            TaskWarpPedIntoVehicle(ped, boat, seat)
-            if IsPedInVehicle(ped, boat, false) then
-                return true
-            end
-        end
-    end
-
-    return false
-end
-
 local function formatRuntimeError(err)
     local text = tostring(err or 'unknown error')
     text = text:gsub('^.-client[/\\]rescue.lua:', '')
@@ -71,55 +47,6 @@ local function formatRuntimeError(err)
         text = text:sub(1, 120)
     end
     return text
-end
-
-local function runWaterPickup(swimmer, ped, boat, targetPos)
-    local waterZ = Utils.getWaterOrDefault(targetPos.x, targetPos.y, targetPos.z)
-    local swimmerStart = vector3(targetPos.x + 1.4, targetPos.y + 1.1, waterZ + 0.15)
-    local patientPickup = vector3(targetPos.x + 0.2, targetPos.y + 0.2, waterZ + 0.15)
-
-    TaskLeaveVehicle(swimmer, boat, 16)
-    Wait(900)
-
-    if IsPedInVehicle(swimmer, boat, false) then
-        TaskWarpPedOutOfVehicle(swimmer, boat)
-        Wait(100)
-    end
-
-    SetEntityCoords(swimmer, swimmerStart.x, swimmerStart.y, swimmerStart.z, false, false, false, true)
-    TaskGoStraightToCoord(swimmer, patientPickup.x, patientPickup.y, patientPickup.z, 1.25, -1, 0.0, 0.0)
-
-    local swimDeadline = GetGameTimer() + 2500
-    while GetGameTimer() < swimDeadline do
-        local swimmerPos = GetEntityCoords(swimmer)
-        if Vdist(swimmerPos.x, swimmerPos.y, swimmerPos.z, patientPickup.x, patientPickup.y, patientPickup.z) <= 1.3 then
-            break
-        end
-        Wait(150)
-    end
-
-    if IsPedDeadOrDying(ped, true) then
-        NetworkResurrectLocalPlayer(patientPickup.x, patientPickup.y, patientPickup.z, GetEntityHeading(ped), true, false)
-        Wait(350)
-    end
-
-    SetEntityCoords(ped, patientPickup.x, patientPickup.y, patientPickup.z, false, false, false, true)
-    ClearPedTasksImmediately(ped)
-    ClearPedTasksImmediately(swimmer)
-
-    local boatBoardPos = GetEntityCoords(boat)
-    SetEntityCoords(swimmer, boatBoardPos.x + 0.7, boatBoardPos.y + 0.3, boatBoardPos.z + 0.4, false, false, false, true)
-    SetEntityCoords(ped, boatBoardPos.x - 0.4, boatBoardPos.y - 0.2, boatBoardPos.z + 0.4, false, false, false, true)
-
-    if not seatPedInBoat(swimmer, boat, { 0, 2, 1 }) then
-        return false
-    end
-
-    if not seatPedInBoat(ped, boat, { 1, 2, 0 }) then
-        return false
-    end
-
-    return true
 end
 
 local function placePlayerAtHandoffPoint(ped, boat, handoffPoint)
@@ -408,14 +335,8 @@ local function runSequence(rawCoords, rescueOptions)
         end
 
         local driver = track(CreatePedInsideVehicle(boat, 26, driverModel, -1, true, false))
-        local swimmer = track(CreatePed(26, driverModel, deathPos.x, deathPos.y, deathPos.z + 1.0, headingToSea, true, false))
-        if not DoesEntityExist(driver) or not DoesEntityExist(swimmer) then
-            Framework.notify('Rescue failed to deploy lifeguard crew.', 'critical')
-            return
-        end
-
-        if not seatPedInBoat(swimmer, boat, { 0, 1, 2 }) then
-            Framework.notify('Rescue failed to seat the swimmer lifeguard.', 'critical')
+        if not DoesEntityExist(driver) then
+            Framework.notify('Rescue failed to deploy lifeguard driver.', 'critical')
             return
         end
 
@@ -424,12 +345,6 @@ local function runSequence(rawCoords, rescueOptions)
         SetBlockingOfNonTemporaryEvents(driver, true)
         SetPedCanBeDraggedOut(driver, false)
         SetPedStayInVehicleWhenJacked(driver, true)
-
-        SetEntityAsMissionEntity(swimmer, true, true)
-        SetEntityInvincible(swimmer, true)
-        SetBlockingOfNonTemporaryEvents(swimmer, true)
-        SetPedCanBeDraggedOut(swimmer, false)
-        SetPedStayInVehicleWhenJacked(swimmer, true)
 
         setState('PICKUP')
 
@@ -448,11 +363,13 @@ local function runSequence(rawCoords, rescueOptions)
             return
         end
 
-        if not runWaterPickup(swimmer, ped, boat, deathPos) then
-            Framework.notify('Rescue boat crew could not complete water pickup.', 'critical')
-            setState('FAILED')
-            return
+        if IsPedDeadOrDying(ped, true) then
+            NetworkResurrectLocalPlayer(deathPos.x, deathPos.y, deathPos.z, GetEntityHeading(ped), true, false)
+            Wait(350)
         end
+
+        TaskWarpPedIntoVehicle(ped, boat, 0)
+        Wait(500)
 
         Framework.notify('Boat pickup complete. Heading to shore.', 'medium')
         setState('SHORE_TRANSIT')

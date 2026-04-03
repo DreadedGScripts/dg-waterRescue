@@ -25,7 +25,6 @@ function Framework.notify(message, severity, subText)
             mainText = message,
             subText = subText or '',
             tag = 'Water Rescue',
-            severity = severity or 'medium',
             timestamp = string.format('%02d:%02d', GetClockHours(), GetClockMinutes()),
             theme = 'ems'
         })
