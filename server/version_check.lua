@@ -47,35 +47,23 @@ CreateThread(function()
     local resourceName = GetCurrentResourceName()
     local currentVersion = trim(GetResourceMetadata(resourceName, 'version', 0) or '')
     if currentVersion == '' then
-        print(('[%s] Version check skipped: missing local version metadata.'):format(resourceName))
         return
     end
 
     local url = ('https://raw.githubusercontent.com/%s/%s/fxmanifest.lua'):format(REPO, BRANCH)
     PerformHttpRequest(url, function(statusCode, body)
-        if statusCode == 404 then
-            print(('[%s] Version check unavailable: remote manifest not publicly reachable for %s'):format(resourceName, REPO))
-            return
-        end
-
         if statusCode ~= 200 then
-            print(('[%s] Version check failed: HTTP %s'):format(resourceName, tostring(statusCode)))
             return
         end
 
         local latestVersion = parseVersion(body)
         if not latestVersion then
-            print(('[%s] Version check failed: could not parse remote version.'):format(resourceName))
             return
         end
 
         local comparison = compareVersions(currentVersion, latestVersion)
         if comparison < 0 then
-            print(('[%s] Update available: current %s, latest %s (%s)'):format(resourceName, currentVersion, latestVersion, REPO))
-        elseif comparison == 0 then
-            print(('[%s] Version check OK: %s'):format(resourceName, currentVersion))
-        else
-            print(('[%s] Version check notice: local version %s is ahead of GitHub %s'):format(resourceName, currentVersion, latestVersion))
+            print(('[%s] Update available: current %s, latest %s | https://github.com/%s'):format(resourceName, currentVersion, latestVersion, REPO))
         end
     end, 'GET')
 end)
