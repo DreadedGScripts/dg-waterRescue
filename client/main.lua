@@ -4,6 +4,37 @@ local Utils = DGWaterRescue.Utils
 local Rescue = DGWaterRescue.Rescue
 local Framework = DGWaterRescue.Framework
 
+local function syncModules()
+    Utils = Utils or DGWaterRescue.Utils
+    Rescue = Rescue or DGWaterRescue.Rescue
+    Framework = Framework or DGWaterRescue.Framework
+end
+
+local function cfg(path, fallback)
+    local node = Config
+    for part in string.gmatch(tostring(path or ''), '[^%.]+') do
+        if type(node) ~= 'table' then
+            return fallback
+        end
+        node = node[part]
+    end
+    if node == nil then
+        return fallback
+    end
+    return node
+end
+
+local function ensureModules(requireRescue)
+    syncModules()
+    if not Utils then
+        return false
+    end
+    if requireRescue and not Rescue then
+        return false
+    end
+    return true
+end
+
 local lastAutoRescueAt = 0
 local dispatchPending = false
 local dispatchRequestedAt = 0
@@ -65,6 +96,10 @@ local function isPlayerDownedOrDead(ped)
 end
 
 local function createEmsRescueBlip(coords)
+    if not ensureModules(false) then
+        return
+    end
+
     local alertCfg = Utils.cfg('Dispatch.alertBlip', {})
     if not alertCfg.enabled then
         return
@@ -107,6 +142,10 @@ local function requestDispatch(reason, coords)
 end
 
 local function tryAutoRescue(reason, coords)
+    if not ensureModules(true) then
+        return
+    end
+
     if Rescue.isActive and Rescue.isActive() then
         return
     end
@@ -116,7 +155,7 @@ local function tryAutoRescue(reason, coords)
         return
     end
 
-    if Utils.cfg('Trigger.onlyDeadInWater', true) and not IsEntityInWater(ped) then
+    if cfg('Trigger.onlyDeadInWater', true) and not IsEntityInWater(ped) then
         return
     end
 
@@ -141,8 +180,12 @@ CreateThread(function()
     end
 end)
 
-if Utils.cfg('Trigger.allowManualEvent', true) then
+if cfg('Trigger.allowManualEvent', true) then
     RegisterNetEvent('dg-waterRescue:beginRescue', function(coords)
+        if not ensureModules(true) then
+            return
+        end
+
         local ped = PlayerPedId()
         local at = Utils.parseCoords(coords, GetEntityCoords(ped))
         Rescue.begin(at)
@@ -150,6 +193,10 @@ if Utils.cfg('Trigger.allowManualEvent', true) then
 end
 
 RegisterCommand('waterrescuetest', function()
+    if not ensureModules(true) then
+        return
+    end
+
     local ped = PlayerPedId()
     if not IsEntityInWater(ped) then
         if Framework and Framework.notify then
@@ -167,14 +214,24 @@ RegisterCommand('waterrescuetest', function()
 end, false)
 
 RegisterNetEvent('dg-waterRescue:client:billingNotice', function(message, severity)
+    syncModules()
     if DGWaterRescue.Framework and DGWaterRescue.Framework.notify then
         DGWaterRescue.Framework.notify(message, severity or 'low')
-    else
+    elseif Utils and Utils.notifyFallback then
         Utils.notifyFallback(message)
+    else
+        print(('[dg-waterRescue] %s'):format(tostring(message)))
     end
 end)
 
 RegisterNetEvent('dg-waterRescue:client:dispatchDecision', function(decision, coords)
+    if not ensureModules(true) then
+        dispatchPending = false
+        dispatchRequestedAt = 0
+        dispatchRequestedCoords = nil
+        return
+    end
+
     dispatchPending = false
     dispatchRequestedAt = 0
     dispatchRequestedCoords = nil
@@ -223,6 +280,10 @@ CreateThread(function()
 
             local ped = PlayerPedId()
             if isPlayerDownedOrDead(ped) then
+                if not ensureModules(true) then
+                    dispatchRequestedCoords = nil
+                    goto continue
+                end
                 local at = Utils.parseCoords(dispatchRequestedCoords, GetEntityCoords(ped))
                 Rescue.begin(at, {
                     useAiAmbulance = true

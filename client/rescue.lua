@@ -38,7 +38,7 @@ local function drawCprProgressHud(label, pct, cycleCount, cycleTarget, tint)
     DrawText(0.5, y - 0.018)
 end
 
-local function buildCprNotifyOptions(cadence, durationMs, replaceKey)
+local function buildCprNotifyOptions(cadence, durationMs)
     local stride = math.max(1, tonumber(cadence.pumpSoundStride) or 1)
     local pulseIntervalMs = cadence.msPerCompression * stride
     local pulseDurationMs = math.max(80, math.min(2000, tonumber(Utils.cfg('Medical.cprNotifyPulseDurationMs', 150)) or 150))
@@ -53,7 +53,6 @@ local function buildCprNotifyOptions(cadence, durationMs, replaceKey)
         fadeInMs = fadeInMs,
         fadeOutMs = fadeOutMs,
         lifetimeMs = math.max(1000, math.floor((durationMs or 10000) + extraLifetimeMs)),
-        replaceKey = tostring(replaceKey or 'cpr-progress'),
     }
 end
 
@@ -120,7 +119,6 @@ local function drawPatientChoiceHud(cost, defaultChoice, secondsLeft, timeoutRat
     AddTextComponentString(('Hold [E] Revive ($%s)'):format(tostring(cost)))
     DrawText(0.42, optionY - 0.008)
 
-    SetTextScale(0.25, 0.25)
     SetTextEntry('STRING')
     AddTextComponentString('Hold [G] Drop Off ($0)')
     DrawText(0.58, optionY - 0.008)
@@ -142,7 +140,7 @@ end
 
 local function getCprCadenceConfig()
     local cpm = math.max(60, math.min(140, tonumber(Utils.cfg('Medical.cprCompressionsPerMinute', 110)) or 110))
-    local cycleTarget = math.max(10, math.min(60, tonumber(Utils.cfg('Medical.cprCycleCompressions', 10)) or 10))
+    local cycleTarget = math.max(10, math.min(60, tonumber(Utils.cfg('Medical.cprCycleCompressions', 30)) or 30))
     local pumpSoundName = tostring(Utils.cfg('Medical.cprPumpSoundName', 'CHECKPOINT_NORMAL'))
     local pumpAltSoundName = tostring(Utils.cfg('Medical.cprPumpAltSoundName', ''))
     local pumpSoundSet = tostring(Utils.cfg('Medical.cprPumpSoundSet', 'HUD_MINI_GAME_SOUNDSET'))
@@ -743,17 +741,7 @@ local function choosePatientOutcomeInAmbulance()
     local reviveControl = Utils.cfg('PatientChoice.reviveControl', 38)
     local dropoffControl = Utils.cfg('PatientChoice.dropoffControl', 47)
     local deadline = GetGameTimer() + (timeoutSeconds * 1000)
-    Framework.notify(
-        ('Ambulance choice: hold E to revive ($%s) or hold G to dropoff.'):format(tostring(Utils.cfg('Billing.amount', 850))),
-        'medium',
-        ('Auto: %s in %ss'):format(tostring(defaultChoice), timeoutSeconds),
-        'ambulance',
-        {
-            replaceKey = 'ambulance-choice',
-            pulseEnabled = false,
-            lifetimeMs = (timeoutSeconds * 1000) + 900,
-        }
-    )
+    local nextNotifyAt = 0
     local holdAction = nil
     local holdStartAt = 0
 
@@ -796,6 +784,16 @@ local function choosePatientOutcomeInAmbulance()
         end
 
         drawPatientChoiceHud(Utils.cfg('Billing.amount', 850), defaultChoice, secondsLeft, timeoutRatio, holdAction, holdRatio)
+
+        if GetGameTimer() >= nextNotifyAt then
+            Framework.notify(
+                ('Ambulance choice: hold E to revive ($%s) or hold G to dropoff.'):format(tostring(Utils.cfg('Billing.amount', 850))),
+                'medium',
+                ('Auto: %s in %ss'):format(tostring(defaultChoice), secondsLeft),
+                'ambulance'
+            )
+            nextNotifyAt = GetGameTimer() + 3000
+        end
 
         Wait(0)
     end
@@ -953,7 +951,7 @@ local function playCprSequence(medic, ped, durationMs)
         'medium',
         ('Follow pulse beats | Target %d compressions per cycle'):format(cadence.cycleTarget),
         'waterrescue',
-        buildCprNotifyOptions(cadence, duration, 'cpr-waterrescue')
+        buildCprNotifyOptions(cadence, duration)
     )
 
     local endAt = GetGameTimer() + duration
@@ -1025,7 +1023,7 @@ local function playCprSequenceInAmbulance(medic, ped, ambulance, patientSeat, du
         'medium',
         ('Follow pulse beats | Target %d compressions per cycle'):format(cadence.cycleTarget),
         'ambulance',
-        buildCprNotifyOptions(cadence, duration, 'cpr-ambulance')
+        buildCprNotifyOptions(cadence, duration)
     )
 
     local endAt = GetGameTimer() + duration
@@ -1316,11 +1314,11 @@ local function runSequence(rawCoords, rescueOptions)
         local dirSeaX, dirSeaY = Utils.normalize2d(deathPos.x - shore.x, deathPos.y - shore.y)
         local perpX, perpY = -dirSeaY, dirSeaX
 
-        local boatBeachWaterOffset = Utils.cfg('Search.boatBeachWaterOffset', 2.5)
+        local boatBeachInlandOffset = Utils.cfg('Search.boatBeachInlandOffset', 3.0)
         local beachPoint = vector3(
-            shore.x + (dirSeaX * boatBeachWaterOffset),
-            shore.y + (dirSeaY * boatBeachWaterOffset),
-            Utils.getWaterOrDefault(shore.x + (dirSeaX * boatBeachWaterOffset), shore.y + (dirSeaY * boatBeachWaterOffset), waterline.z) + 0.8
+            shore.x - (dirSeaX * boatBeachInlandOffset),
+            shore.y - (dirSeaY * boatBeachInlandOffset),
+            Utils.getGroundOrDefault(shore.x, shore.y, shore.z) + 0.2
         )
 
         local rendezvous = vector3(
@@ -1499,11 +1497,11 @@ local function runSequence(rawCoords, rescueOptions)
             beachPoint,
             Utils.cfg('Navigation.boatBeachSpeed', 44.0),
             Utils.cfg('TimeoutsMs.boatBeach', 22000),
-            Utils.cfg('Navigation.boatBeachStopDistance', 4.0)
+            Utils.cfg('Navigation.boatBeachStopDistance', 11.0)
         )
 
         if not beached then
-            SetEntityCoordsNoOffset(boat, beachPoint.x, beachPoint.y, beachPoint.z, false, false, false)
+            SetEntityCoordsNoOffset(boat, beachPoint.x, beachPoint.y, beachPoint.z + 0.2, false, false, false)
             finalBoatPos = GetEntityCoords(boat)
         end
 
