@@ -20,6 +20,50 @@ local function hasHazardObject(x, y, z)
     return false
 end
 
+local function hasHazardNearby(x, y, z)
+    if hasHazardObject(x, y, z) then
+        return true
+    end
+
+    -- Large structures (yachts/pier meshes) may not be detected at a single point.
+    local largeRadius = Utils.cfg('Realism.largeHazardScanRadius', 60.0)
+    local ringRadius = math.max(18.0, largeRadius * 0.55)
+    for _, offset in ipairs({
+        {  ringRadius,  0.0 },
+        { -ringRadius,  0.0 },
+        { 0.0,  ringRadius },
+        { 0.0, -ringRadius },
+    }) do
+        if hasHazardObject(x + offset[1], y + offset[2], z) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function isInBlockedShoreArea(x, y, z)
+    local blockedAreas = Utils.cfg('Realism.blockedShoreAreas', {})
+    if type(blockedAreas) ~= 'table' then
+        return false
+    end
+
+    for _, area in ipairs(blockedAreas) do
+        local centerX = area.x or area[1]
+        local centerY = area.y or area[2]
+        local centerZ = area.z or area[3] or z
+        local radius = tonumber(area.radius) or 0.0
+        if centerX and centerY and radius > 0.0 then
+            local dist = Vdist(x, y, z, centerX, centerY, centerZ)
+            if dist <= radius then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
 local function getRescueShorePoint(pos)
     local hutModelName = Utils.cfg('Models.lifeguardHut', 'prop_lifeguard_tower_01')
     local hutModel = GetHashKey(hutModelName)
@@ -57,6 +101,7 @@ function Routing.findSafeShore(origin)
     local probeForward = Utils.cfg('Search.shoreProbeForward', 10.0)
     local zoneBias = Utils.cfg('Realism.preferSandZones', true)
     local beachZones = Utils.cfg('Realism.beachZoneNames', {})
+    local maxShoreHeightAboveWater = Utils.cfg('Search.maxShoreHeightAboveWater', 3.2)
 
     local best = nil
 
@@ -75,8 +120,8 @@ function Routing.findSafeShore(origin)
                 local foundGround, groundZ = GetGroundZFor_3dCoord(lx, ly, waterZ + 20.0, 0)
                 local stillWater, _ = GetWaterHeight(lx, ly, groundZ + 1.0, 0.0)
 
-                if foundGround and not stillWater and groundZ > waterZ + 0.35 then
-                    if not hasHazardObject(lx, ly, groundZ) then
+                if foundGround and not stillWater and groundZ > waterZ + 0.35 and groundZ <= (waterZ + maxShoreHeightAboveWater) then
+                    if not hasHazardNearby(lx, ly, groundZ) and not isInBlockedShoreArea(lx, ly, groundZ) then
                         local score = radius
                         if zoneBias then
                             local zone = GetNameOfZone(lx, ly, groundZ)

@@ -19,15 +19,24 @@ local function toQbNotifyType(severity)
     return 'primary'
 end
 
-function Framework.notify(message, severity, subText)
+function Framework.notify(message, severity, subText, theme, notifyOptions)
     if hasResource('dg-notifications') then
-        TriggerEvent('dg-notifications:client:ems', {
+        local chosenTheme = tostring(theme or 'waterrescue')
+        local payload = {
             mainText = message,
             subText = subText or '',
             tag = 'Water Rescue',
             timestamp = string.format('%02d:%02d', GetClockHours(), GetClockMinutes()),
-            theme = 'ems'
-        })
+            theme = chosenTheme
+        }
+
+        if type(notifyOptions) == 'table' then
+            for key, value in pairs(notifyOptions) do
+                payload[key] = value
+            end
+        end
+
+        TriggerEvent('dg-notifications:client:ems', payload)
         return
     end
 

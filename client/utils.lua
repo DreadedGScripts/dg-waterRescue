@@ -25,7 +25,8 @@ function Utils.debug(message)
 end
 
 function Utils.notifyFallback(message)
-    TriggerEvent('chat:addMessage', { args = { '^2Water Rescue:', message } })
+    -- Native chat messages are disabled; keep a debug trace for fallback cases.
+    Utils.debug(('Fallback notification suppressed: %s'):format(tostring(message)))
 end
 
 function Utils.loadModel(modelName)
