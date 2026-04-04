@@ -95,6 +95,10 @@ Config.Medical = {
 	cprPumpSoundStride = 2,
 	cprCycleSoundName = 'TIMER_STOP',
 	cprCycleSoundSet = 'HUD_MINI_GAME_SOUNDSET',
+	cprNotifyPulseDurationMs = 150,
+	cprNotifyFadeInMs = 180,
+	cprNotifyFadeOutMs = 260,
+	cprNotifyExtraLifetimeMs = 600,
 }
 
 Config.PatientChoice = {

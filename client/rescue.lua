@@ -23,13 +23,10 @@ local function drawCprProgressHud(label, pct, cycleCount, cycleTarget, tint)
     local y = 0.905
     local width = 0.28
     local height = 0.022
-    local pulse = (math.sin(GetGameTimer() / 120.0) + 1.0) * 0.5
-    local fillAlpha = math.floor(165 + (pulse * 75))
-    local glowAlpha = math.floor(110 + (pulse * 70))
+    local fillAlpha = 210
 
     DrawRect(x, y, width, height, 8, 14, 24, 195)
     DrawRect(x - ((width * (1.0 - clampedPct)) * 0.5), y, width * clampedPct, height - 0.005, tint.r, tint.g, tint.b, fillAlpha)
-    DrawRect(x - ((width * (1.0 - clampedPct)) * 0.5), y, width * clampedPct, 0.003, 255, 255, 255, glowAlpha)
 
     SetTextFont(4)
     SetTextScale(0.33, 0.33)
@@ -39,6 +36,24 @@ local function drawCprProgressHud(label, pct, cycleCount, cycleTarget, tint)
     SetTextEntry('STRING')
     AddTextComponentString(('%s  %d%%  |  Compressions %d/%d'):format(label, math.floor(clampedPct * 100.0), cycleCount, cycleTarget))
     DrawText(0.5, y - 0.018)
+end
+
+local function buildCprNotifyOptions(cadence, durationMs)
+    local stride = math.max(1, tonumber(cadence.pumpSoundStride) or 1)
+    local pulseIntervalMs = cadence.msPerCompression * stride
+    local pulseDurationMs = math.max(80, math.min(2000, tonumber(Utils.cfg('Medical.cprNotifyPulseDurationMs', 150)) or 150))
+    local fadeInMs = math.max(80, math.min(4000, tonumber(Utils.cfg('Medical.cprNotifyFadeInMs', 180)) or 180))
+    local fadeOutMs = math.max(80, math.min(4000, tonumber(Utils.cfg('Medical.cprNotifyFadeOutMs', 260)) or 260))
+    local extraLifetimeMs = math.max(0, tonumber(Utils.cfg('Medical.cprNotifyExtraLifetimeMs', 600)) or 600)
+
+    return {
+        pulseEnabled = true,
+        pulseIntervalMs = pulseIntervalMs,
+        pulseDurationMs = pulseDurationMs,
+        fadeInMs = fadeInMs,
+        fadeOutMs = fadeOutMs,
+        lifetimeMs = math.max(1000, math.floor((durationMs or 10000) + extraLifetimeMs)),
+    }
 end
 
 local function playCprSound(soundName, soundSet)
@@ -97,15 +112,15 @@ local function drawPatientChoiceHud(cost, defaultChoice, secondsLeft, timeoutRat
 
     local optionY = y - 0.01
     DrawRect(0.42, optionY, 0.16, 0.036, reviveSelected and 70 or 26, reviveSelected and 130 or 47, reviveSelected and 80 or 70, 210)
-    DrawRect(0.58, optionY, 0.16, 0.036, dropSelected and 130 or 54, dropSelected and 70 or 32, dropSelected and 70 or 47, 210)
+    DrawRect(0.58, optionY, 0.16, 0.036, dropSelected and 70 or 26, dropSelected and 130 or 47, dropSelected and 80 or 70, 210)
 
-    SetTextScale(0.30, 0.30)
+    SetTextScale(0.25, 0.25)
     SetTextEntry('STRING')
     AddTextComponentString(('Hold [E] Revive ($%s)'):format(tostring(cost)))
     DrawText(0.42, optionY - 0.008)
 
     SetTextEntry('STRING')
-    AddTextComponentString('Hold [G] Drop Off')
+    AddTextComponentString('Hold [G] Drop Off ($0)')
     DrawText(0.58, optionY - 0.008)
 
     local timeoutW = panelW - 0.04
@@ -931,13 +946,20 @@ local function playCprSequence(medic, ped, durationMs)
         TaskStartScenarioInPlace(ped, 'WORLD_HUMAN_SUNBATHE_BACK', 0, true)
     end
 
+    Framework.notify(
+        'CPR in progress...',
+        'medium',
+        ('Follow pulse beats | Target %d compressions per cycle'):format(cadence.cycleTarget),
+        'waterrescue',
+        buildCprNotifyOptions(cadence, duration)
+    )
+
     local endAt = GetGameTimer() + duration
-    local nextNotifyAt = 0
     while GetGameTimer() < endAt do
         local now = GetGameTimer()
         local remainingMs = endAt - GetGameTimer()
         local elapsed = math.max(0, duration - remainingMs)
-        local pct = math.floor((elapsed / duration) * 100)
+        local pct = (elapsed / duration) * 100
 
         if now >= nextPumpAt then
             compressionCount = compressionCount + 1
@@ -954,22 +976,6 @@ local function playCprSequence(medic, ped, durationMs)
 
         drawCprProgressHud('CPR IN PROGRESS', pct, cycleCount, cadence.cycleTarget, { r = 96, g = 205, b = 255 })
 
-        if GetGameTimer() >= nextNotifyAt then
-            local secsLeft = math.max(1, math.ceil(remainingMs / 1000))
-            Framework.notify(
-                'CPR in progress...',
-                'medium',
-                ('Reviving in %ds | Compressions %d/%d'):format(secsLeft, cycleCount, cadence.cycleTarget),
-                'waterrescue',
-                {
-                    pulseEnabled = true,
-                    pulseIntervalMs = cadence.msPerCompression * math.max(1, tonumber(cadence.pumpSoundStride) or 1),
-                    pulseDurationMs = 150,
-                }
-            )
-            nextNotifyAt = GetGameTimer() + 1000
-        end
-
         if playedAnim then
             if not IsEntityPlayingAnim(medic, medicDict, 'cpr_pumpchest', 3) then
                 TaskPlayAnim(medic, medicDict, 'cpr_pumpchest', 8.0, -8.0, -1, 1, 0, false, false, false)
@@ -979,7 +985,7 @@ local function playCprSequence(medic, ped, durationMs)
             end
         end
 
-        Wait(100)
+        Wait(0)
     end
 
     FreezeEntityPosition(medic, false)
@@ -1012,14 +1018,21 @@ local function playCprSequenceInAmbulance(medic, ped, ambulance, patientSeat, du
     local patientDict = 'mini@cpr@char_b@cpr_def'
     local hasAnim = Utils.loadAnimDict(medicDict) and Utils.loadAnimDict(patientDict)
 
+    Framework.notify(
+        'Paramedic performing CPR in ambulance...',
+        'medium',
+        ('Follow pulse beats | Target %d compressions per cycle'):format(cadence.cycleTarget),
+        'ambulance',
+        buildCprNotifyOptions(cadence, duration)
+    )
+
     local endAt = GetGameTimer() + duration
-    local nextNotifyAt = 0
 
     while GetGameTimer() < endAt do
         local now = GetGameTimer()
         local remainingMs = endAt - GetGameTimer()
         local elapsed = math.max(0, duration - remainingMs)
-        local pct = math.floor((elapsed / duration) * 100)
+        local pct = (elapsed / duration) * 100
 
         if now >= nextPumpAt then
             compressionCount = compressionCount + 1
@@ -1036,22 +1049,6 @@ local function playCprSequenceInAmbulance(medic, ped, ambulance, patientSeat, du
 
         drawCprProgressHud('AMBULANCE CPR', pct, cycleCount, cadence.cycleTarget, { r = 255, g = 138, b = 102 })
 
-        if GetGameTimer() >= nextNotifyAt then
-            local secsLeft = math.max(1, math.ceil(remainingMs / 1000))
-            Framework.notify(
-                'Paramedic performing CPR in ambulance...',
-                'medium',
-                ('Reviving in %ds | Compressions %d/%d'):format(secsLeft, cycleCount, cadence.cycleTarget),
-                'ambulance',
-                {
-                    pulseEnabled = true,
-                    pulseIntervalMs = cadence.msPerCompression * math.max(1, tonumber(cadence.pumpSoundStride) or 1),
-                    pulseDurationMs = 150,
-                }
-            )
-            nextNotifyAt = GetGameTimer() + 1000
-        end
-
         if hasAnim then
             if IsPedInVehicle(medic, ambulance, false) and not IsEntityPlayingAnim(medic, medicDict, 'cpr_pumpchest', 3) then
                 TaskPlayAnim(medic, medicDict, 'cpr_pumpchest', 4.0, -4.0, 1200, 49, 0, false, false, false)
@@ -1061,7 +1058,7 @@ local function playCprSequenceInAmbulance(medic, ped, ambulance, patientSeat, du
             end
         end
 
-        Wait(100)
+        Wait(0)
     end
 end
 
