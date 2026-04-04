@@ -121,7 +121,7 @@ DG Water Rescue is part of the free DG Scripts ecosystem:
 
 - [`dg-bridge`](https://github.com/DreadedGScripts/dg-bridge) — framework abstraction (QBCore / ESX / standalone billing, notifications, revive)
 - [`dg-notifications`](https://github.com/DreadedGScripts/dg-notifications) — enhanced EMS-styled rescue notifications
-- [`dg-adminmenu`](https://github.com/DreadedGScripts/dgscripts-admin-menu) — admin panel with reporting and server management tools
+- [`dg-adminmenu`](https://github.com/DreadedGScripts/dg-adminmenu-docs) — admin panel with reporting and server management tools
 - [`dg-discord`](https://github.com/DreadedGScripts/dg-discord) — Discord bot integration for logging and automation
 
 ---
