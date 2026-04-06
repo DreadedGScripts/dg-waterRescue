@@ -155,7 +155,13 @@ local function tryAutoRescue(reason, coords)
         return
     end
 
+
     if cfg('Trigger.onlyDeadInWater', true) and not IsEntityInWater(ped) then
+        return
+    end
+
+    -- Only allow auto rescue if rescueMode is 'auto'
+    if cfg('Trigger.rescueMode', 'auto') ~= 'auto' then
         return
     end
 
@@ -170,13 +176,17 @@ local function tryAutoRescue(reason, coords)
 end
 
 AddEventHandler('baseevents:onPlayerDied', function(_, coords)
-    tryAutoRescue('baseevents:onPlayerDied', coords)
+    if cfg('Trigger.rescueMode', 'auto') == 'auto' then
+        tryAutoRescue('baseevents:onPlayerDied', coords)
+    end
 end)
 
 CreateThread(function()
     while true do
         Wait(1500)
-        tryAutoRescue('fallback_death_monitor')
+        if cfg('Trigger.rescueMode', 'auto') == 'auto' then
+            tryAutoRescue('fallback_death_monitor')
+        end
     end
 end)
 
@@ -192,23 +202,29 @@ if cfg('Trigger.allowManualEvent', true) then
     end)
 end
 
-RegisterCommand('waterrescuetest', function()
-    if not ensureModules(true) then
-        return
-    end
-
-    local ped = PlayerPedId()
-    if not IsEntityInWater(ped) then
+RegisterCommand('waterrescue', function()
+    if cfg('Trigger.rescueMode', 'command') ~= 'command' then
         if Framework and Framework.notify then
-            Framework.notify('You must be in water to test water rescue.', 'low')
+            Framework.notify('Manual rescue is currently disabled. Set Config.Trigger.rescueMode = "command" to enable.', 'low')
         else
-            Utils.notifyFallback('You must be in water to test water rescue.')
+            Utils.notifyFallback('Manual rescue is currently disabled. Set Config.Trigger.rescueMode = "command" to enable.')
         end
         return
     end
-
+    if not ensureModules(true) then
+        return
+    end
+    local ped = PlayerPedId()
+    if not IsEntityInWater(ped) then
+        if Framework and Framework.notify then
+            Framework.notify('You must be in water to use /waterrescue.', 'low')
+        else
+            Utils.notifyFallback('You must be in water to use /waterrescue.')
+        end
+        return
+    end
     if Framework and Framework.notify then
-        Framework.notify('Manual water rescue test started.', 'medium')
+        Framework.notify('Manual water rescue started.', 'medium')
     end
     Rescue.begin(GetEntityCoords(ped))
 end, false)

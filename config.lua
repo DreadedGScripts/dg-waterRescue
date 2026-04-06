@@ -5,6 +5,7 @@ Config.Debug = false
 Config.Trigger = {
 	onlyDeadInWater = true,
 	allowManualEvent = true,
+	rescueMode = 'auto', -- 'auto' or 'command'. If 'command', player must use /waterrescue to trigger rescue. If 'auto', rescue triggers automatically.
 }
 
 Config.Models = {

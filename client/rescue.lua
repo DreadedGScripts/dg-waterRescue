@@ -114,7 +114,7 @@ local function drawPatientChoiceHud(cost, defaultChoice, secondsLeft, timeoutRat
     DrawRect(0.42, optionY, 0.16, 0.036, reviveSelected and 70 or 26, reviveSelected and 130 or 47, reviveSelected and 80 or 70, 210)
     DrawRect(0.58, optionY, 0.16, 0.036, dropSelected and 70 or 26, dropSelected and 130 or 47, dropSelected and 80 or 70, 210)
 
-    SetTextScale(0.25, 0.25)
+    SetTextScale(0.32, 0.32)
     SetTextEntry('STRING')
     AddTextComponentString(('Hold [E] Revive ($%s)'):format(tostring(cost)))
     DrawText(0.42, optionY - 0.008)
@@ -1612,6 +1612,16 @@ local function runSequence(rawCoords, rescueOptions)
                 Framework.notify('Medical handoff failed: unable to revive patient in ambulance.', 'critical', nil, 'ambulance')
                 setState('FAILED')
                 return
+            end
+
+            -- Eject player from ambulance and place at rear doors
+            if IsPedInVehicle(ped, ambulance, false) then
+                TaskLeaveVehicle(ped, ambulance, 0)
+                local rearPos, _ = getAmbulanceRearPositions(ambulance)
+                Wait(800)
+                -- Place at rear doors, slightly behind
+                SetEntityCoords(ped, rearPos.x, rearPos.y, rearPos.z, false, false, false, true)
+                SetEntityHeading(ped, GetEntityHeading(ambulance))
             end
 
             setState('REVIVED')
