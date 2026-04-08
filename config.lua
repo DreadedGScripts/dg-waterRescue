@@ -48,7 +48,7 @@ Config.Navigation = {
 	boatShoreSpeed = 36.0,
 	boatBeachSpeed = 44.0,
 	boatShoreApproachThreshold = 10.0,
-	boatBeachStopDistance = 4.0,
+	boatBeachStopDistance = 1.0,
 	rescueBoatMarkerDistance = 190.0,
 	rescueBoatMarkerHeight = 2.1,
 	rescueBoatBlipSprite = 410,
@@ -128,7 +128,7 @@ Config.Realism = {
 		'prop_pier_02',
 		'prop_beach_fire',
 	},
-	hazardScanRadius = 14.0,
+	hazardScanRadius = 2.0,
 	largeHazardScanRadius = 90.0,
 	blockedShoreAreas = {
 		-- Main map yacht area (strictly excluded for rescue shoreline picks).
@@ -140,7 +140,7 @@ Config.Billing = {
 	enabled = true,
 	moneyType = 'bank',
 	amount = 850,
-	requirePaymentToRevive = false,
+	requirePaymentToRevive = true,
 }
 
 Config.Cooldown = {
@@ -159,6 +159,6 @@ Config.Dispatch = {
 		scale = 1.0,
 		route = true,
 		durationSeconds = 180,
-		label = 'Water Rescue Call'
+		label = 'Lifeguard Alert: Water Rescue Call'
 	}
 }
