@@ -6,7 +6,7 @@
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Framework](https://img.shields.io/badge/framework-QBCore%20%7C%20ESX%20%7C%20Standalone-blue.svg)
+![Framework](https://img.shields.io/badge/framework-QBCore%20%7C%20Qbox%20%7C%20ESX%20%7C%20Standalone-blue.svg)
 
 **AI lifeguard extraction, EMS-first dispatch, beach handoff, CPR, and critical-condition revive**
 
@@ -34,9 +34,10 @@ Full sequence:
 | **Resource Name** | `dg-waterRescue` |
 | **Version** | `2.0.0` |
 | **License** | MIT (Free) |
-| **Framework Support** | QBCore, ESX, Standalone |
+| **Framework Support** | QBCore, Qbox, ESX, Standalone |
 | **Primary Mode** | Standalone-first |
 | **Bridge Integration** | Optional via [`dg-bridge`](https://github.com/DreadedGScripts/dg-bridge) |
+| **Notification system** | Optional via ['dg-notifications'] (https://github.com/DreadedGScripts/dg-notifications) |
 
 ---
 
@@ -126,9 +127,20 @@ DG Water Rescue is part of the free DG Scripts ecosystem:
 
 ---
 
-## 🛠️ Notes
+## 💬 Support & Contact
 
-- Standalone-first: works without any framework. QBCore/ESX features activate automatically if present.
-- Billing and cooldown are off by default and fully optional.
-- Partial-health revive is intentional — patients should seek further medical RP after rescue.
-- The AI boat **always** dispatches regardless of EMS availability. Only the ambulance stage is gated.
+For questions, bug reports, or suggestions, join our Discord:
+
+**[Dreaded Scripts Discord](https://discord.gg/ZNJ7tJ26Sn)**
+
+You can also reach out directly to the author: `DrahMah`
+
+## 🧪 Beta Testing
+
+Interested in beta testing new features or preview builds for DG Water Rescue?
+
+See the public documentation for details and sign-up instructions:
+
+**[DG AdminMenu Docs & Beta Info](https://github.com/DreadedGScripts/dg-adminmenu-docs)**
+
+_Note: Beta access and info is managed via the docs link above._
