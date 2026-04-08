@@ -10,12 +10,13 @@ local Framework = DGWaterRescue.Framework
 local state = 'IDLE'
 local rescueActive = false
 local lastRescueStartAt = 0
-local SHOULDER_CARRY_DICT = 'missfinale_c2mcs_1'
-local SHOULDER_CARRY_MEDIC_ANIM = 'fin_c2_mcs_1_camman'
-local SHOULDER_CARRY_PATIENT_ANIM = 'firemans_carry'
-local SHOULDER_CARRY_PATIENT_FALLBACK_ANIM = 'fin_c2_mcs_1_camman_p'
-local BOAT_PATIENT_DEAD_ANIM_DICT = 'dead'
-local BOAT_PATIENT_DEAD_ANIM_NAME = 'dead_a'
+-- Fireman's carry common animations
+local SHOULDER_CARRY_DICT = 'anim@fireman_carry'
+local SHOULDER_CARRY_MEDIC_ANIM = 'fireman_carry'
+local SHOULDER_CARRY_PATIENT_ANIM = 'fireman_carry'
+local SHOULDER_CARRY_PATIENT_FALLBACK_ANIM = 'fireman_carry'
+local BOAT_PATIENT_DEAD_ANIM_DICT = 'anim@scripted@ulp_missions@injured_agent@'
+local BOAT_PATIENT_DEAD_ANIM_NAME = 'idle'
 
 local function drawCprProgressHud(label, pct, cycleCount, cycleTarget, tint)
     local clampedPct = math.max(0.0, math.min(1.0, (tonumber(pct) or 0.0) / 100.0))
@@ -857,7 +858,7 @@ local function carryPatientToAmbulanceRear(medic, ped, ambulance)
         local veh = GetVehiclePedIsIn(medic, false)
         if veh and veh ~= 0 then
             TaskLeaveVehicle(medic, veh, 16)
-            Wait(450)
+            -- Removed Wait(450)
         end
     end
 
@@ -865,7 +866,7 @@ local function carryPatientToAmbulanceRear(medic, ped, ambulance)
         local veh = GetVehiclePedIsIn(ped, false)
         if veh and veh ~= 0 then
             forcePedOutOfVehicle(ped, veh, 1000)
-            Wait(150)
+            -- Removed Wait(150)
         end
     end
 
@@ -880,7 +881,8 @@ local function carryPatientToAmbulanceRear(medic, ped, ambulance)
     SetEntityCollision(ped, false, false)
     AttachEntityToEntity(ped, medic, GetPedBoneIndex(medic, 11816), 0.27, 0.15, 0.63, 0.5, 0.5, 180.0, false, false, false, false, 2, false)
 
-    TaskGoStraightToCoord(medic, rearMedicPos.x, rearMedicPos.y, rearMedicPos.z, 1.0, -1, GetEntityHeading(ambulance), 0.0)
+    TaskFollowNavMeshToCoord(medic, rearMedicPos.x, rearMedicPos.y, rearMedicPos.z, 1.0, -1, 0.0, 0, 0.0)
+    SetPedKeepTask(medic, true)
 
     local deadline = GetGameTimer() + 12000
     while GetGameTimer() < deadline do
@@ -888,7 +890,7 @@ local function carryPatientToAmbulanceRear(medic, ped, ambulance)
         if Vdist(medicPos.x, medicPos.y, medicPos.z, rearMedicPos.x, rearMedicPos.y, rearMedicPos.z) <= 1.5 then
             break
         end
-        Wait(150)
+        Wait(0) -- Minimal wait for smooth AI updates
     end
 
     DetachEntity(ped, true, true)

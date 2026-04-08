@@ -59,26 +59,31 @@ function Framework.notify(message, severity, subText, theme, notifyOptions)
 end
 
 function Framework.reviveWithFallback(ped)
+    local localPed = PlayerPedId()
+    print("[DGWaterRescue] reviveWithFallback called. ped:", ped, "localPed:", localPed)
+
     if hasResource('dg-bridge') then
+        print("[DGWaterRescue] Triggering dg-bridge:revive event...")
         TriggerEvent('dg-bridge:revive')
         Wait(1200)
     end
 
-    if IsPedDeadOrDying(ped, true) then
+    if IsPedDeadOrDying(localPed, true) then
+        print("[DGWaterRescue] Still dead after dg-bridge, triggering hospital:client:Revive...")
         TriggerEvent('hospital:client:Revive')
         Wait(1200)
     end
 
-    if IsPedDeadOrDying(ped, true) then
-        local p = GetEntityCoords(ped)
-        NetworkResurrectLocalPlayer(p.x, p.y, p.z, GetEntityHeading(ped), true, false)
-    end
+    print("[DGWaterRescue] Forcing native revive with NetworkResurrectLocalPlayer...")
+    local p = GetEntityCoords(localPed)
+    NetworkResurrectLocalPlayer(p.x, p.y, p.z, GetEntityHeading(localPed), true, false)
 
-    local maxHealth = GetEntityMaxHealth(ped)
+    local maxHealth = GetEntityMaxHealth(localPed)
     local target = math.min(maxHealth, Utils.cfg('Medical.partialReviveHealth', 130))
-    SetEntityHealth(ped, target)
-    ClearPedBloodDamage(ped)
-    ClearPedTasksImmediately(ped)
+    print("[DGWaterRescue] Setting health to", target)
+    SetEntityHealth(localPed, target)
+    ClearPedBloodDamage(localPed)
+    ClearPedTasksImmediately(localPed)
 end
 
 function Framework.requestBillingAndCooldown(stateName)
