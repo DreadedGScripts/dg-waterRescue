@@ -1,5 +1,5 @@
 DGWaterRescue = DGWaterRescue or {}
---
+
 local Utils = DGWaterRescue.Utils
 local Rescue = DGWaterRescue.Rescue
 local Framework = DGWaterRescue.Framework
