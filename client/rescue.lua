@@ -29,7 +29,7 @@ local function drawCprProgressHud(label, pct, cycleCount, cycleTarget, tint)
     DrawRect(x - ((width * (1.0 - clampedPct)) * 0.5), y, width * clampedPct, height - 0.005, tint.r, tint.g, tint.b, fillAlpha)
 
     SetTextFont(4)
-    SetTextScale(0.33, 0.33)
+    SetTextScale(0.32, 0.32)
     SetTextColour(220, 235, 255, 230)
     SetTextOutline()
     SetTextCentre(true)
@@ -114,11 +114,12 @@ local function drawPatientChoiceHud(cost, defaultChoice, secondsLeft, timeoutRat
     DrawRect(0.42, optionY, 0.16, 0.036, reviveSelected and 70 or 26, reviveSelected and 130 or 47, reviveSelected and 80 or 70, 210)
     DrawRect(0.58, optionY, 0.16, 0.036, dropSelected and 70 or 26, dropSelected and 130 or 47, dropSelected and 80 or 70, 210)
 
-    SetTextScale(0.32, 0.32)
+    SetTextScale(0.22, 0.22)
     SetTextEntry('STRING')
     AddTextComponentString(('Hold [E] Revive ($%s)'):format(tostring(cost)))
     DrawText(0.42, optionY - 0.008)
 
+    SetTextScale(0.22, 0.22)
     SetTextEntry('STRING')
     AddTextComponentString('Hold [G] Drop Off ($0)')
     DrawText(0.58, optionY - 0.008)
@@ -1614,14 +1615,11 @@ local function runSequence(rawCoords, rescueOptions)
                 return
             end
 
-            -- Eject player from ambulance and place at rear doors
+            -- Always warp player back into ambulance seat before ejecting
+            TaskWarpPedIntoVehicle(ped, ambulance, patientSeat or 1)
+            Wait(150)
             if IsPedInVehicle(ped, ambulance, false) then
                 TaskLeaveVehicle(ped, ambulance, 0)
-                local rearPos, _ = getAmbulanceRearPositions(ambulance)
-                Wait(800)
-                -- Place at rear doors, slightly behind
-                SetEntityCoords(ped, rearPos.x, rearPos.y, rearPos.z, false, false, false, true)
-                SetEntityHeading(ped, GetEntityHeading(ambulance))
             end
 
             setState('REVIVED')
