@@ -69,7 +69,7 @@ Config.Navigation = {
 
 Config.TimeoutsMs = {
 	boatPickup = 45000,
-	boatPickupMinVisualDelay = 3500,
+	boatPickupMinVisualDelay = 1000,
 	boatPickupVisibleProximityMs = 1200,
 	boatVisualWaitMax = 12000,
 	boatToShore = 42000,
