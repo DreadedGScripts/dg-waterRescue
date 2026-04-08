@@ -59,6 +59,16 @@ function Framework.notify(message, severity, subText, theme, notifyOptions)
 end
 
 function Framework.reviveWithFallback(ped)
+        -- Qbox compatibility: clear death/laststand state if possible
+        local framework = nil
+        if exports and exports['dg-bridge'] and exports['dg-bridge']:getFramework() then
+            framework = exports['dg-bridge']:getFramework()
+        end
+        if framework and framework.PlayerData and framework.PlayerData.metadata then
+            print("[DGWaterRescue] Clearing Qbox death/laststand state on client...")
+            framework.PlayerData.metadata["isdead"] = false
+            framework.PlayerData.metadata["inlaststand"] = false
+        end
     local localPed = PlayerPedId()
     print("[DGWaterRescue] reviveWithFallback called. ped:", ped, "localPed:", localPed)
 

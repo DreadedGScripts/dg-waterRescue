@@ -885,9 +885,11 @@ local function carryPatientToAmbulanceRear(medic, ped, ambulance)
     SetPedKeepTask(medic, true)
 
     local deadline = GetGameTimer() + 12000
+
     while GetGameTimer() < deadline do
         local medicPos = GetEntityCoords(medic)
         if Vdist(medicPos.x, medicPos.y, medicPos.z, rearMedicPos.x, rearMedicPos.y, rearMedicPos.z) <= 1.5 then
+            setAmbulanceRearDoorsOpen(ambulance, true)
             break
         end
         Wait(0) -- Minimal wait for smooth AI updates
