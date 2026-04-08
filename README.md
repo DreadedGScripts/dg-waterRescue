@@ -37,7 +37,7 @@ Full sequence:
 | **Framework Support** | QBCore, Qbox, ESX, Standalone |
 | **Primary Mode** | Standalone-first |
 | **Bridge Integration** | Optional via [`dg-bridge`](https://github.com/DreadedGScripts/dg-bridge) |
-| **Notification system** | Optional via ['dg-notifications'] (https://github.com/DreadedGScripts/dg-notifications) |
+| **Notification system** | Optional via [`dg-notifications`] (https://github.com/DreadedGScripts/dg-notifications) |
 
 ---
 
