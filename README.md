@@ -138,8 +138,6 @@ You can also reach out directly to the author: `DrahMah`
 ## 🧪 Beta Testing
 
 Interested in testing a admin menu i am currently developing? I need a server with some players to test for false negatives as this menu logs pretty much everything. so i need to fine tune it. 
-I will give you a Escrowed version for you and you'll then install the script and ill join and do backend fixes on my end. Then update. You'll also receive the package permanently! Join the discord and PM!
-
-See the public documentation for details and sign-up instructions:
+I will give you a Escrowed version for you and you'll then install the script and ill join and do backend fixes on my end. Then update. You'll also receive the package permanently! Join the discord and PM DrahMah!
 
 **[DG AdminMenu Docs & Beta Info](https://github.com/DreadedGScripts/dg-adminmenu-docs)**
